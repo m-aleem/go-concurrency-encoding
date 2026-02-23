@@ -4,4 +4,4 @@
 
 ### Running
 
-#) `go run test_sync.go`
+1) `go run test_sync.go`
