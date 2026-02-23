@@ -1,5 +1,5 @@
 # go-concurrency-encoding
-Encoding Go's concurrency features (channels, synchronization, mobility) in XKlaim and Erlang
+Encoding Go's concurrency features (channels, synchronization, mobility) in X-KLAIM and Erlang
 
 ## Background
 
