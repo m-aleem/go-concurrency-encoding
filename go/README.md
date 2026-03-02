@@ -1,7 +1,5 @@
 # go
 
-## test_sync.go
+## Running tests
 
-### Running
-
-1) `go run test_sync.go`
+1) `go run test_sync.go test_async.go test_mobility.go test.go`

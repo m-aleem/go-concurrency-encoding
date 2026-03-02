@@ -6,12 +6,12 @@ import (
 	"time"
 )
 
-// -------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // SYNCHRONOUS COMMUNICATION
 // From https://go.dev/tour/concurrency/2: By default, sends and receives
 // block until the other side is ready. This allows goroutines to synchronize
 // without explicit locks or condition variables.
-// -------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
 func test_sync_sender(ch chan int, msgs int) {
 	for i := 0; i < msgs; i++ {
@@ -51,11 +51,12 @@ func test_sync() {
 
 }
 
-// -------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // MAIN
-// -------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 
-func main() {
+func test_sync_main() {
 	fmt.Println("--- Synchronous ---")
 	test_sync()
+	fmt.Println("--- End Synchronous --\n")
 }

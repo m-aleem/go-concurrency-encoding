@@ -1,7 +1,6 @@
 # erlang
 
-## test_sync.erl
+## Running tests
 
-### Running
-1) Compile the program: `erlc sync.erl test_sync.erl`
-2) Run: `erl -noshell -s test_sync main -s init stop`
+1) Compile the program: `erlc goencoding.erl test_sync.erl test_async.erl test_mobility.erl test.erl`
+2) Run: `erl -noshell -s test main -s init stop`
