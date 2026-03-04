@@ -12,14 +12,15 @@ func main() {
 	fmt.Println("1: Sync Test")
 	fmt.Println("2: Async Test")
 	fmt.Println("3: Mobility Test")
-	fmt.Println("4: All Tests")
+	fmt.Println("4: Close (Panic) Test")
+	fmt.Println("5: All Tests")
 	fmt.Print("Enter choice (e.g., 1, 23, 4): ")
 
 	reader := bufio.NewReader(os.Stdin)
 	input, _ := reader.ReadString('\n')
 	input = strings.TrimSpace(input)
 
-	valid := map[rune]bool{'1': true, '2': true, '3': true, '4': true}
+	valid := map[rune]bool{'1': true, '2': true, '3': true, '4': true, '5': true}
 	runTests := make(map[string]bool)
 
 	// Check validity
@@ -31,11 +32,12 @@ func main() {
 		runTests[string(ch)] = true
 	}
 
-	// If "4" (All) is chosen, run all tests
-	if runTests["4"] {
+	// If "5" (All) is chosen, run all tests
+	if runTests["5"] {
 		test_sync_main()
 		test_async_main()
 		test_mobility_main()
+		test_close_main()
 		return
 	}
 
@@ -48,5 +50,8 @@ func main() {
 	}
 	if runTests["3"] {
 		test_mobility_main()
+	}
+	if runTests["4"] {
+		test_close_main()
 	}
 }

@@ -6,7 +6,8 @@ main() ->
     io:format("1: Sync Test~n"),
     io:format("2: Async Test~n"),
     io:format("3: Mobility Test~n"),
-    io:format("4: All Tests~n"),
+    io:format("4: Close Test~n"),
+    io:format("5: All Tests~n"),
     io:format("Enter choice (e.g., 1, 23, 4): "),
 
     InputRaw = io:get_line(""),
@@ -16,20 +17,22 @@ main() ->
         false ->
             io:format("Invalid input. No tests will be run.~n");
         true ->
-            case lists:member($4, Input) of
+            case lists:member($5, Input) of
                 true ->
                     run_test(test_sync),
                     run_test(test_async),
-                    run_test(test_mobility);
+                    run_test(test_mobility),
+                    run_test(test_close);
                 false ->
                     run_if_selected(Input, $1, test_sync),
                     run_if_selected(Input, $2, test_async),
-                    run_if_selected(Input, $3, test_mobility)
+                    run_if_selected(Input, $3, test_mobility),
+                    run_if_selected(Input, $4, test_close)
             end
     end.
 
 is_valid([]) -> true;
-is_valid([H|T]) when H >= $1, H =< $4 -> is_valid(T);
+is_valid([H|T]) when H >= $1, H =< $5 -> is_valid(T);
 is_valid(_) -> false.
 
 run_if_selected(Input, Char, Module) ->
