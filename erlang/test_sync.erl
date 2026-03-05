@@ -40,7 +40,7 @@ test_sync() ->
 
     io:format("[sync] Spawned sender goroutine...~n"),
     spawn(fun() ->
-        test_sync_sender(Ch, 3),
+        test_sync_sender(Ch, 10),
         Parent ! {done, sender}
     end),
 

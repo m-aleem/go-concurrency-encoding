@@ -23,81 +23,119 @@ sync_new() ->
 %%
 %% Closed is a boolean indicating if channel is closed
 %%
-%% The channel process loop maintains the state of waiting senders and
-%% receivers.
-%% The function waits for messages of the following patterns:
-%%   1 {send, SenderPid, Msg} - a sender wants to send a message
-%%   2 {recv, RecvPid} - a receiver wants to receive a message
-%%   3 {close_channel, CloserPid} - a request to close the channel
-%% The channel process handles these messages according to the current
-%% state (see inline comments) and updates its state accordingly.
+%% The channel process loop maintains the synchronization of senders
+%% and receivers. It ensures that a sender and receiver communicate
+%% "directly" without buffering, and that the correct blocking behavior occurs
+%% when one party is waiting for the other.
+%%
+%% The function waits for different messages depending on the current state
+%% of the channel. For example, if a sender is waiting, the channel will only accept
+%% recv or close messages, and any send messages will accumulate in the
+%% mailbox until the waiting sender is handled. See inline comments for more details.
 
 sync_channel_loop(ChannelState, Closed) ->
-    receive
-        {send, SenderPid, Msg} ->
-            %% Sender wants to send a message
-            if
-                Closed ->
-                    %% Send on closed channel - panic in Go!
-                    %% In Erlang, we notify sender with error and print to console
-                    io:format("panic: send on closed channel~n"),
-                    SenderPid ! {error, closed},
-                    sync_channel_loop(ChannelState, Closed);
-                true ->
-                    %% Channel open, check if receiver waiting
-                    case ChannelState of
-                        none ->
-                            %% No receiver waiting, sender blocks
-                            sync_channel_loop({waiting_sender, SenderPid, Msg}, Closed);
-                        {waiting_receiver, RecvPid} ->
-                            %% Receiver waiting! Rendezvous
-                            RecvPid ! {ok, Msg},
-                            SenderPid ! ok,
-                            sync_channel_loop(none, Closed)
-                    end
-            end;
-
-        {recv, RecvPid} ->
-            %% Receiver wants to receive a message
-            case ChannelState of
-                none ->
-                    %% No sender waiting
+    case ChannelState of
+        none ->
+            %% No one waiting, accept any operation
+            receive
+                {send, SenderPid, Msg} ->
+                    %% Sender arrived first! Check if channel is closed first
                     if
                         Closed ->
-                            %% No sender waiting and channel closed
+                            %% Send on closed channel - panic in Go!
+                            io:format("panic: send on closed channel~n"),
+                            SenderPid ! {error, closed},
+                            sync_channel_loop(none, Closed);
+                        true ->
+                            %% No receiver waiting, sender blocks
+                            sync_channel_loop({waiting_sender, SenderPid, Msg}, Closed)
+                    end;
+
+                {recv, RecvPid} ->
+                    %% Receiver arrived first! Check if channel is closed first
+                    if
+                        Closed ->
+                            %% Receive on closed channel with no sender
                             RecvPid ! closed,
-                            sync_channel_loop(ChannelState, Closed);
+                            sync_channel_loop(none, Closed);
                         true ->
                             %% No sender waiting, receiver blocks
                             sync_channel_loop({waiting_receiver, RecvPid}, Closed)
                     end;
-                {waiting_sender, SenderPid, Msg} ->
-                    %% Sender waiting! Rendezvous
-                    RecvPid ! {ok, Msg},
-                    SenderPid ! ok,
-                    sync_channel_loop(none, Closed)
+
+                {close_channel, CloserPid} ->
+                    %% Received close request, check if already closed
+                    if
+                        Closed ->
+                            %% Close of closed channel - panic in Go!
+                            io:format("panic: close of closed channel~n"),
+                            CloserPid ! {error, already_closed},
+                            sync_channel_loop(none, Closed);
+                        true ->
+                            %% Mark channel as closed
+                            CloserPid ! ok,
+                            sync_channel_loop(none, true)
+                    end
             end;
 
-        {close_channel, CloserPid} ->
-            if
-                Closed ->
-                    %% Close of closed channel - panic in Go!
-                    %% In Erlang, we print to console and notify caller
-                    io:format("panic: close of closed channel~n"),
-                    CloserPid ! {error, already_closed},
-                    sync_channel_loop(ChannelState, Closed);
-                true ->
-                    %% Mark channel as closed
-                    case ChannelState of
-                        {waiting_receiver, RecvPid} ->
-                            %% Notify waiting receiver that channel is closed
+        {waiting_sender, SenderPid, Msg} ->
+            %% Sender waiting, only accept recv or close
+            %% Any {send, _, _} messages will accumulate in mailbox
+            receive
+                {recv, RecvPid} ->
+                    %% Receiver arrived!
+                    RecvPid ! {ok, Msg},
+                    SenderPid ! ok,
+                    sync_channel_loop(none, Closed);
+
+                {close_channel, CloserPid} ->
+                    if
+                        Closed ->
+                            %% Close of closed channel - panic in Go!
+                            io:format("panic: close of closed channel~n"),
+                            CloserPid ! {error, already_closed},
+                            sync_channel_loop({waiting_sender, SenderPid, Msg}, Closed);
+                        true ->
+                            %% Channel closed while sender waiting
+                            %% Notify waiting sender with error
+                            SenderPid ! {error, closed},
+                            CloserPid ! ok,
+                            sync_channel_loop(none, true)
+                    end
+            end;
+
+        {waiting_receiver, RecvPid} ->
+            %% Receiver waiting, only accept send or close
+            %% Any {recv, _} messages will accumulate in mailbox
+            receive
+                {send, SenderPid, Msg} ->
+                    %% Sender arrived!
+                    if
+                        Closed ->
+                            %% Send on closed channel - panic in Go!
+                            io:format("panic: send on closed channel~n"),
+                            SenderPid ! {error, closed},
+                            sync_channel_loop({waiting_receiver, RecvPid}, Closed);
+                        true ->
+                            %% Sender arrived! Rendezvous
+                            RecvPid ! {ok, Msg},
+                            SenderPid ! ok,
+                            sync_channel_loop(none, Closed)
+                    end;
+
+                {close_channel, CloserPid} ->
+                    if
+                        Closed ->
+                            %% Close of closed channel - panic in Go!
+                            io:format("panic: close of closed channel~n"),
+                            CloserPid ! {error, already_closed},
+                            sync_channel_loop({waiting_receiver, RecvPid}, Closed);
+                        true ->
+                            %% Channel closed while receiver waiting
+                            %% Notify waiting receiver
                             RecvPid ! closed,
                             CloserPid ! ok,
-                            sync_channel_loop(none, true);
-                        _ ->
-                            %% No waiting receiver, just mark closed
-                            CloserPid ! ok,
-                            sync_channel_loop(ChannelState, true)
+                            sync_channel_loop(none, true)
                     end
             end
     end.
@@ -148,9 +186,9 @@ async_new(Capacity) ->
     %% Initiate asynchronous channel process with an internal loop
     %% and (unbounded) queue for buffering messages, but specify
     %% the capacity limit for blocking behavior.
-    %% Also, initialize with empty waiting receivers list [] and empty
-    %% waiting senders list [].
-    spawn(fun() -> async_channel_loop(queue:new(), Capacity, [], [], false) end).
+    %% Also, initialize with empty waiting receivers and senders
+    %% lists, and closed = false
+    spawn(fun() -> async_channel_loop(queue:new(), Capacity, queue:new(), queue:new(), false) end).
 
 %% Internal Channel Process for Asynchronous Channels
 %%
@@ -183,13 +221,13 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) -
                     SenderPid ! {error, closed},
                     async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed);
                 true ->
-                    case WaitingReceivers of
-                        [RecvPid | RestReceivers] ->
+                    case queue:out(WaitingReceivers) of
+                        {{value, RecvPid}, RestReceivers} ->
                             %% Receiver waiting! Send directly (bypass buffer)
                             RecvPid ! {ok, Msg},
                             SenderPid ! ok,
                             async_channel_loop(Buffer, Capacity, RestReceivers, WaitingSenders, Closed);
-                        [] ->
+                        {empty, _} ->
                             %% No receiver waiting, check buffer space
                             if
                                 BufferSize < Capacity ->
@@ -200,7 +238,7 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) -
                                 true ->
                                     %% Buffer full, sender must block
                                     %% Store sender in waiting sender list
-                                    NewWaitingSenders = WaitingSenders ++ [{SenderPid, Msg}],
+                                    NewWaitingSenders = queue:in({SenderPid, Msg}, WaitingSenders),
                                     async_channel_loop(Buffer, Capacity, WaitingReceivers, NewWaitingSenders, Closed)
                             end
                     end
@@ -213,13 +251,13 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) -
                     %% Message in buffer, deliver it
                     RecvPid ! {ok, Msg},
                     %% Check if senders are waiting and unblock one because buffer space is now available
-                    case WaitingSenders of
-                        [{WaitingSenderPid, WaitingMsg} | RestSenders] ->
+                    case queue:out(WaitingSenders) of
+                        {{value, {WaitingSenderPid, WaitingMsg}}, RestSenders} ->
                             %% Sender waiting, add their message to buffer and unblock
                             NewBuffer2 = queue:in(WaitingMsg, NewBuffer),
                             WaitingSenderPid ! ok,
                             async_channel_loop(NewBuffer2, Capacity, WaitingReceivers, RestSenders, Closed);
-                        [] ->
+                        {empty, _} ->
                             %% No senders waiting
                             async_channel_loop(NewBuffer, Capacity, WaitingReceivers, WaitingSenders, Closed)
                     end;
@@ -232,9 +270,9 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) -
                             async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed);
                         true ->
                             %% Buffer empty, receiver must block
-                            case WaitingSenders of
+                            case queue:out(WaitingSenders) of
                                 %% Check if senders are waiting first
-                                [{SenderPid, Msg} | RestSenders] ->
+                                {{value, {SenderPid, Msg}}, RestSenders} ->
                                     %% Sender waiting! Direct handoff to receiver
                                     RecvPid ! {ok, Msg},
                                     SenderPid ! ok,
@@ -244,9 +282,9 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) -
                                     %% However, we handle it gracefully by doing a direct handoff and then
                                     %% checking for more waiting senders.
                                     async_channel_loop(Buffer, Capacity, WaitingReceivers, RestSenders, Closed);
-                                [] ->
+                                {empty, _} ->
                                     %% No senders waiting, receiver must wait
-                                    NewWaitingReceivers = WaitingReceivers ++ [RecvPid],
+                                    NewWaitingReceivers = queue:in(RecvPid, WaitingReceivers),
                                     async_channel_loop(Buffer, Capacity, NewWaitingReceivers, WaitingSenders, Closed)
                             end
                     end
@@ -262,17 +300,15 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) -
                     async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed);
                 true ->
                     %% Mark channel as closed, notify all waiting receivers and senders
-                    lists:foreach(fun(RecvPid) -> RecvPid ! closed end, WaitingReceivers),
-                    lists:foreach(fun({SenderPid, _}) -> SenderPid ! {error, closed} end, WaitingSenders),
+                    lists:foreach(fun(RecvPid) -> RecvPid ! closed end, queue:to_list(WaitingReceivers)),
+                    lists:foreach(fun({SenderPid, _}) -> SenderPid ! {error, closed} end, queue:to_list(WaitingSenders)),
                     %% We do NOT explicitly empty the buffer here because in Go, closing a channel
                     %% does not discard buffered messages. Receivers can still receive buffered
                     %% messages until the buffer is empty per https://go.dev/ref/spec#Close
                     CloserPid ! ok,
-                    async_channel_loop(Buffer, Capacity, [], [], true)
+                    async_channel_loop(Buffer, Capacity, queue:new(), queue:new(), true)
             end
-    end.
-
-%% async_send(ChannelPid, Msg) -> ok | {error, closed}
+    end.%% async_send(ChannelPid, Msg) -> ok | {error, closed}
 %% Sends a message on the buffered channel (like Go's ch <- msg)
 %% Does not block if buffer has space; blocks if buffer is full
 %% In Go, sending on a closed channel causes a panic
