@@ -1,140 +1,107 @@
 package goencoding
 
-// ========================================
-// ASYNC CHANNEL IMPLEMENTATION
-// ========================================
+// ---------------------------------------------------------------------------
+// ASYNCHRONOUS COMMUNICATION
+// ---------------------------------------------------------------------------
 
-// Create/get named async channel
-proc async_new(String chanName) {
-    val Locality factory = logloc("chan_factory")
-    out("make_chan", chanName, getPhysical(self))@factory
-    println("[async_new] Sent request")
+// Create a named async channel; if the channel already exists in the channel
+// factories tuple space, this will return the existing channel Locality,
+// otherwise it will return the Locality of the newly created channel
+//
+// Usage:
+//
+// 1) eval this process
+// 	  where: <chanFactory> Locality of the ChannelFactory node
+//			 <chanName> Name of the channel
+// 2) in("new_chan", "async", chanName, var Locality <ch>)
+// 	  where: <ch> will be the Locality of the new channel
+//			 <chanFactory> Locality of the ChannelFactory node
+//	  FIXME: In future we could change this to require use of in instead,
+// this is something to be discussed...
+proc async_new(Locality chanFactory, String chanName) {
+    out("make_chan", "async", chanName, self)@chanFactory
+    println("[async_new] Sent request to create channel " + chanName + " in factory " + chanFactory)
 }
 
-proc async_get(String chanName) {
-    val Locality factory = logloc("chan_factory")
-    in("chan_registered", chanName, var Locality ch)@factory
-    out("chan_registered", chanName, ch)@self
-    println("[async_get] Sent request")
+// Send to async channel (non-blocking); will add the input message into
+// the tuple space of the channel node
+//
+// Usage:
+//
+// 1) eval this process
+// 	  where: <ch> Locality of the channel
+//			 <msg> message to send via channel
+proc async_send(Locality ch, Object msg) {
+    out("msg", msg)@ch
 }
 
-// FIXME How go get FIFO ordering...
-
-// Send to async channel (non-blocking)
-proc async_send(Locality chan, Object data) {
-    out("data", data)@chan
-}
-
-// Receive from async channel (blocking)
+// Receive from async channel (blocking); will read a message from
+// the tuple space of the channel node and then add a message into the
+// tuple space of the requesting process
+//
+// Usage:
+//
+// 1) eval this process@<l>
+// 2) in("async_recv_result", var Object msg)@<l>
+// 	  where: <msg> will contain the received message
+//			 <l> Locality; these need to match because the receive process
+//			     explicitly puts the message into the tuple space of the
+//				 async_recv-process-evaluating node
 proc async_recv(Locality chan) {
-    in("data", var Object result)@chan
-    out("recv_result", result)@self
+    in("msg", var Object msg)@chan
+    out("async_recv_result", msg)@self
 }
 
-// Close channel
-proc close_chan(Locality chan) {
-	// FIXME close channel
-    out("CLOSED")@chan
+// FIXME implement close channel
+
+
+// ---------------------------------------------------------------------------
+// SYNCHRONOUS COMMUNICATION
+// ---------------------------------------------------------------------------
+
+proc sync_new(Locality chanFactory, String chanName) {
+    out("make_chan", "sync", chanName, self)@chanFactory
+    println("[sync_new] Sent request to create channel " + chanName + " in factory " + chanFactory)
 }
 
-// ========================================
-// SINGLE NETWORK WITH ALL NODES
-// ========================================
-
-net GoEncodingTest physical "tcp-127.0.0.1:9999" {
-
-    // Infrastructure node - channel factory/registry
-	node ChannelFactory logical "chan_factory" {
-    println("[GoRuntime] ChannelFactory started")
-
-
-	// FIXME account for closed channel
-    while(true) {
-        in("make_chan", var String chanName, var Locality requester)@self
-        println("[GoRuntime] Request for channel: " + chanName + " from " + requester)
-
-        // Use Object for the Locality since we get a class error otherwise
-		val boolean exists = read_nb("chan_registered", chanName, var Object locObj)@self
-
-        if (exists) {
-        	read("chan_registered", chanName, var Locality existingChan)@self
-            println("[GoRuntime] Found existing channel: " + existingChan)
-            // Send to requester
-            out("chan_registered", chanName, existingChan)@self
-            out("chan_created", chanName, existingChan)@requester
-        } else {
-            println("[GoRuntime] Creating NEW channel for: " + chanName)
-            val Locality newChan = newloc()
-
-            // Store in registry
-            out("chan_registered", chanName, newChan)@self
-            println("[GoRuntime] STORED in registry: (" + chanName + ", " + newChan + ")")
-
-            read_nb("chan_registered", chanName, var Locality DebugChan)@self
-			println("[DEBUG] " + chanName + ", loc: " + DebugChan)
-
-            // Send to requester
-            out("chan_created", chanName, newChan)@requester
-        }
-    }
+proc sync_send(Locality ch, Object msg) {
+    out("msg", msg, self)@ch
+    in("ack", self)@ch
+    println("[sync_send] Done sending " + msg)
 }
 
-	// FIXME move these to a different package
-    // Test Nodes
-
-    node Producer {
-    	val Locality mySelf = getPhysical(self)
-	    println("[Producer] My self: PHY " + mySelf)
-	    eval(new async_new("myChannel"))@self
-	    println("[Producer] Spawned async_new, waiting...")
-	    in("chan_created", "myChannel", var Locality ch)@self
-        println("[Producer] Got channel: " + ch)
-
-        println("[Producer] Sending messages...")
-        // FIXME - right now these will each spawn a new process to add to tuple space
-        // Also tuple space itself is unordered
-        eval(new async_send(ch, 42))@self
-        eval(new async_send(ch, "hello"))@self
-        eval(new async_send(ch, true))@self
-        println("[Producer] Sent 3 messages")
-
-//		  FIXME...Close channel
-//        eval(new close_chan(ch))@self
-//        println("[Producer] Closed channel")
-    }
-
-    node Consumer {
-        println("[Consumer] Getting channel 'myChannel'...")
-
-		// Call async_new, again; by design new should return
-		// existing channel if one was already created/registered/
-		// in the channel factory
-        eval(new async_new("myChannel"))@self
-        in("chan_created", "myChannel", var Locality ch)@self
-
-		// This is an alternate to calling async_new again, but
-		// requires user knowledge that infact the channel already
-		// exists and is registered
-//        eval(new async_get("myChannel"))@self
-//        in("chan_registered", "myChannel", var Locality ch)@self
-
-        println("[Consumer] Got channel: " + ch)
-
-        println("[Consumer] Receiving message 1...")
-        eval(new async_recv(ch))@self
-        in("recv_result", var Object x1)@self
-        println("[Consumer] Got: " + x1)
-
-        println("[Consumer] Receiving message 2...")
-        eval(new async_recv(ch))@self
-        in("recv_result", var Object x2)@self
-        println("[Consumer] Got: " + x2)
-
-        println("[Consumer] Receiving message 3...")
-        eval(new async_recv(ch))@self
-        in("recv_result", var Object x3)@self
-        println("[Consumer] Got: " + x3)
-
-    }
-
+// Receive from sync channel (blocking); (1) will read a message from
+// the tuple space of the channel node and then (2) add a message into the
+// tuple space of the requesting process then (3) will add a message
+// acknowledgement into the tuple space of the channel node
+//
+// Usage:
+//
+// 1) eval this process@<l>
+// 2) in("sync_recv_result", var Object msg)@<l>
+// 	  where: <msg> will contain the received message
+//			 <l> Locality; these need to match because the receive process
+//			     explicitly puts the message into the tuple space of the
+//				 sync_recv-process-evaluating node
+proc sync_recv(Locality chan) {
+    in("msg", var Object msg, var Locality sender)@chan
+    out("sync_recv_result", msg)@self
+    out("ack", sender)@chan
+    println("[sync_recv] Done receiving " + msg)
+    // Note that out does not block - it only puts the tuple into
+    // the tuple space and returns so it is responsibility of the
+    // caller that evals this process to then call "in" to actually
+    // receive the message, as described in usage
 }
+
+// FIXME implement close channel
+
+// ---------------------------------------------------------------------------
+// CHANNEL FACTORY
+// To use the GoEncoding, you must add a ChannelFactory node to your
+// network (see below), and assign it a logical Locality
+// ---------------------------------------------------------------------------
+
+// FIXME Copy here when complete - for now see test files for the most up-to-date
+// channel factory (node) code
+

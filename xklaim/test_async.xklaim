@@ -1,0 +1,84 @@
+package goencodingtest
+
+import goencoding.*
+
+net TestAsync physical "localhost:9999"{
+
+	
+	node ChannelFactory logical "channel_factory"{
+		println("[ChannelFactory] Initialized")
+			
+		    while(true) {
+		        println("[ChannelFactory] Waiting for channel create requests...")
+		 
+		        in("make_chan", var String chanType, var String chanName, var Locality requester)@self
+		        println("[ChannelFactory] Request for channel: " + chanName + " (" + chanType + ")")
+		        
+		        // Check if the channel already exists 
+		        // Use Object for the Locality since we get a class error otherwise
+		        var String otherChanType = "async"
+		        if(chanType == "async"){
+		        	otherChanType = "sync"
+		        }
+				val boolean exists = read_nb("chan_registered", chanType, chanName, var Object locObj)@self
+				val boolean existsOther = read_nb("chan_registered", otherChanType, chanName, var Object locObj)@self
+		        
+		        if(existsOther) {
+	        		println("[ChannelFactory] ERROR channel " + chanName + " already exists as " + otherChanType)
+		        }
+		        else if (exists) {
+		        	// Read from registry
+		        	read_nb("chan_registered", chanType, chanName, var Locality existingChan)@self
+		            println("[ChannelFactory] Found existing channel: " + existingChan)
+		            
+		            // Send to requester
+		            out("new_chan", chanType, chanName, existingChan)@requester
+		            
+		        } else {
+		            println("[ChannelFactory] Creating new channel for: " + chanName)
+		            val Locality newChan = newloc()
+		            
+		            // Store in registry
+		            out("chan_registered", chanType, chanName, newChan)@self
+		            println("[ChannelFactory] Stored channel in registry: (" + chanName + ", " + newChan + ")")
+		            
+		            // Send to requester
+		            out("new_chan", chanType, chanName, newChan)@requester
+		        }
+			}
+	}
+	
+	
+	node NodeA {
+		val String chanName = "channelX"
+	    eval(new async_new(channel_factory, chanName))@self
+	    in("new_chan", "async", chanName, var Locality ch)@channel_factory
+	    println("[NodeA] Got channel " + ch)
+	    
+	    eval(new sync_new(channel_factory, chanName))@self
+	    read("new_chan", "sync", chanName, var Locality ch2)@channel_factory
+	    println("[NodeA] Got channel " + ch2 + ", should be the same as above (" + (ch2==ch) + ")")
+		
+//	    eval(new sync_new(channel_factory, chanName))@self
+//	    in("new_chan", "sync", chanName, var Locality ch3)@channel_factory
+//	    println("[NodeA] ERROR this should not print...")
+
+		var msg = "hello"
+	    eval(new async_send(ch, msg))@self
+	    println("[NodeA] Sent message " + msg)
+	}
+	
+	
+	node NodeB {
+		val String chanName = "channelX"
+	    eval(new async_new(channel_factory, chanName))@self
+	    in("new_chan", "async", chanName, var Locality ch)@channel_factory
+	    println("[NodeB] Got channel " + ch)
+	    
+        eval(new async_recv(ch))@self
+        in("async_recv_result", var Object msg)@self
+	    println("[NodeB] Got message " + msg)
+	    
+	}
+
+}
