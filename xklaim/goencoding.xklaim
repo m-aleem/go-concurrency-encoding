@@ -4,97 +4,162 @@ package goencoding
 // ASYNCHRONOUS COMMUNICATION
 // ---------------------------------------------------------------------------
 
-// Create a named async channel; if the channel already exists in the channel
+// Create a async channel; if the channel already exists in the channel
 // factories tuple space, this will return the existing channel Locality,
 // otherwise it will return the Locality of the newly created channel
 //
 // Usage:
 //
 // 1) eval this process
-// 	  where: <chanFactory> Locality of the ChannelFactory node
-//			 <chanName> Name of the channel
-// 2) in("new_chan", "async", chanName, var Locality <ch>)
-// 	  where: <ch> will be the Locality of the new channel
-//			 <chanFactory> Locality of the ChannelFactory node
-//	  FIXME: In future we could change this to require use of in instead,
-// this is something to be discussed...
-proc async_new(Locality chanFactory, String chanName) {
-    out("make_chan", "async", chanName, self)@chanFactory
-    println("[async_new] Sent request to create channel " + chanName + " in factory " + chanFactory)
+//       where: <chanFactory> Locality of the ChannelFactory node
+//              <chanName> Name of the channel
+//              <returnTag> Unique return tag to read channel Locality
+// 2) in(returnTag, var Locality <ch>)
+//       where: <returnTag> Same return tag used to eval process
+//              <ch> will be the Locality of the new channel
+proc async_new(Locality chanFactory, String chanName, Object returnTag) {
+    val Locality requester = getPhysical(self)
+    out("make_chan", "async", chanName, requester)@chanFactory
+    in("new_chan", "async", chanName, var Locality ch)@self
+    out(returnTag, ch)@self
 }
 
-// Send to async channel (non-blocking); will add the input message into
-// the tuple space of the channel node
+// Main worker process of an async channel that gets initiated with the
+// channel is created. Waits for an async send request in the channel's
+// tuple space. Upon receiving the requests, writes the message into
+// the tuple space (i.e. is non-blocking).
+//
+// This process should NOT be evaluated directly by user, it is designed
+// for the channel factory, only
+proc async_channel(String chanName){
+    println("[Ch " + chanName + "] ASYNC Channel process started")
+    // FIXME Incorporate close logic, eventually
+    while(true) {
+        in("async_send", var Object msg, var Locality sender)@self
+        out("async_msg", msg)@self
+    }
+}
+
+// Send to async channel (non-blocking); will add the send message request
+// into the tuple space of the channel node for immediate processing by
+// async_channel
 //
 // Usage:
 //
 // 1) eval this process
-// 	  where: <ch> Locality of the channel
-//			 <msg> message to send via channel
+//       where: <ch> Locality of the channel
+//              <msg> message to send via channel
 proc async_send(Locality ch, Object msg) {
-    out("msg", msg)@ch
+    val Locality requester = getPhysical(self)
+    out("async_send", msg, requester)@ch
 }
 
 // Receive from async channel (blocking); will read a message from
-// the tuple space of the channel node and then add a message into the
+// the tuple space of the channel node and then add the message into the
 // tuple space of the requesting process
 //
 // Usage:
 //
-// 1) eval this process@<l>
-// 2) in("async_recv_result", var Object msg)@<l>
-// 	  where: <msg> will contain the received message
-//			 <l> Locality; these need to match because the receive process
-//			     explicitly puts the message into the tuple space of the
-//				 async_recv-process-evaluating node
-proc async_recv(Locality chan) {
-    in("msg", var Object msg)@chan
-    out("async_recv_result", msg)@self
+// 1) eval this process
+//       where: <ch> Locality of the channel
+//              <returnTag> Unique return tag to read received message
+// 2) in(returnTag, var Object msg)
+//       where: <returnTag> Same return tag used to eval process
+//              <msg> will contain the received message
+proc async_recv(Locality ch, Object returnTag) {
+    in("async_msg", var Object msg)@ch
+    out(returnTag, msg)@self
 }
 
-// FIXME implement close channel
+
+proc async_close(Locality chan) {
+    // FIXME
+}
 
 
 // ---------------------------------------------------------------------------
 // SYNCHRONOUS COMMUNICATION
 // ---------------------------------------------------------------------------
 
-proc sync_new(Locality chanFactory, String chanName) {
-    out("make_chan", "sync", chanName, self)@chanFactory
-    println("[sync_new] Sent request to create channel " + chanName + " in factory " + chanFactory)
-}
-
-proc sync_send(Locality ch, Object msg) {
-    out("msg", msg, self)@ch
-    in("ack", self)@ch
-    println("[sync_send] Done sending " + msg)
-}
-
-// Receive from sync channel (blocking); (1) will read a message from
-// the tuple space of the channel node and then (2) add a message into the
-// tuple space of the requesting process then (3) will add a message
-// acknowledgement into the tuple space of the channel node
+// Create a sync channel; if the channel already exists in the channel
+// factories tuple space, this will return the existing channel Locality,
+// otherwise it will return the Locality of the newly created channel
 //
 // Usage:
 //
-// 1) eval this process@<l>
-// 2) in("sync_recv_result", var Object msg)@<l>
-// 	  where: <msg> will contain the received message
-//			 <l> Locality; these need to match because the receive process
-//			     explicitly puts the message into the tuple space of the
-//				 sync_recv-process-evaluating node
-proc sync_recv(Locality chan) {
-    in("msg", var Object msg, var Locality sender)@chan
-    out("sync_recv_result", msg)@self
-    out("ack", sender)@chan
-    println("[sync_recv] Done receiving " + msg)
-    // Note that out does not block - it only puts the tuple into
-    // the tuple space and returns so it is responsibility of the
-    // caller that evals this process to then call "in" to actually
-    // receive the message, as described in usage
+// 1) eval this process
+//       where: <chanFactory> Locality of the ChannelFactory node
+//              <chanName> Name of the channel
+//              <returnTag> Unique return tag to read channel Locality
+// 2) in(returnTag, var Locality <ch>)
+//       where: <returnTag> Same return tag used to eval process
+//              <ch> will be the Locality of the new channel
+proc sync_new(Locality chanFactory, String chanName, Object returnTag) {
+    val Locality requester = getPhysical(self)
+    out("make_chan", "sync", chanName, requester)@chanFactory
+    in("new_chan", "sync", chanName, var Locality ch)@self
+    out(returnTag, ch)@self
 }
 
-// FIXME implement close channel
+// Main worker process of an sync channel that gets initiated with the
+// channel is created. Waits for an send request in the channel's
+// tuple space, then waits for a recv request in the channel's tuple space.
+// After the receive request arrives, writes the message into the
+// receivers tuple space and acknowledgement into the senders
+// tuple space so that they can stop blocking and continue.
+//
+// This process should NOT be evaluated directly by user, it is designed
+// for the channel factory, only
+proc sync_channel(String chanName){
+    println("[Ch " + chanName + "] SYNC Channel process started)")
+    // FIXME Incorporate close logic, eventually
+    while(true) {
+        in("sync_send", var Object msg, var Locality sender)@self
+        in("sync_recv", var Locality receiver)@self
+
+        out("sync_msg", msg)@receiver
+        out("sync_ack", msg, sender)@sender
+    }
+}
+
+// Send to sync channel (blocking); will add the send message request
+// into the tuple space of the channel node and then wait for the ack
+// in its own tuple space
+//
+// Usage:
+//
+// 1) eval this process
+//       where: <ch> Locality of the channel
+//              <msg> message to send via channel
+proc sync_send(Locality ch, Object msg) {
+    val Locality sender = getPhysical(self)
+    out("sync_send", msg, sender)@ch
+    in("sync_ack", msg, sender)@self
+}
+
+
+// Receive from sync channel (blocking); will read a message from
+// the tuple space of the channel node and then add the message into the
+// tuple space of the requesting process
+//
+// Usage:
+//
+// 1) eval this process
+//       where: <ch> Locality of the channel
+//              <returnTag> Unique return tag to read received message
+// 2) in(returnTag, var Object msg)
+//       where: <returnTag> Same return tag used to eval process
+//              <msg> will contain the received message
+proc sync_recv(Locality ch, Object returnTag) {
+    val Locality receiver = getPhysical(self)
+    out("sync_recv", receiver)@ch
+    in("sync_msg", var Object msg)@self
+    out(returnTag, msg)@self
+}
+
+proc sync_close(Locality chan) {
+    // FIXME
+}
 
 // ---------------------------------------------------------------------------
 // CHANNEL FACTORY
@@ -104,4 +169,5 @@ proc sync_recv(Locality chan) {
 
 // FIXME Copy here when complete - for now see test files for the most up-to-date
 // channel factory (node) code
+
 
