@@ -51,7 +51,13 @@ proc async_channel(String chanName){
 //              <msg> message to send via channel
 proc async_send(Locality ch, Object msg) {
     val Locality requester = getPhysical(self)
-    out("async_send", msg, requester)@ch
+    var Boolean isClosed = read_nb("chan_status", "closed")@ch
+    if(isClosed){
+    	println("panic: send on closed channel " + ch)
+    }
+    else{
+    	out("async_send", msg, requester)@ch
+    }
 }
 
 // Receive from async channel (blocking); will read a message from
@@ -67,13 +73,40 @@ proc async_send(Locality ch, Object msg) {
 //       where: <returnTag> Same return tag used to eval process
 //              <msg> will contain the received message
 proc async_recv(Locality ch, Object returnTag) {
-    in("async_msg", var Object msg)@ch
-    out(returnTag, msg)@self
+    val Boolean isClosed = read_nb("chan_status", "closed")@ch
+    
+    if(isClosed) {
+        // Try to drain buffered messages
+        val Boolean hasBufferedMsg = read_nb("async_msg", var Object bufferedMsg)@ch
+        
+        if(hasBufferedMsg) {
+            in("async_msg", var Object bufferedMsg)@ch
+            out(returnTag, bufferedMsg)@self
+        }
+        else {
+            // Channel closed and empty - return null
+            out(returnTag, null)@self
+        }
+    }
+    else {
+        in("async_msg", var Object msg)@ch
+        out(returnTag, msg)@self
+    }
 }
 
 
-proc async_close(Locality chan) {
-    // FIXME
+proc async_close(Locality ch, Object returnTag) {
+    val Boolean alreadyClosed = read_nb("chan_status", "closed")@ch
+    
+    if(alreadyClosed) {
+        println("panic: close of closed channel")
+        out(returnTag, false)@self
+    }
+    else {
+        out("chan_status", "closed")@ch
+        println("[ChannelFactory] Closed channel: " + ch)
+        out(returnTag, true)@self
+    }
 }
 
 
@@ -132,9 +165,16 @@ proc sync_channel(String chanName){
 //       where: <ch> Locality of the channel
 //              <msg> message to send via channel
 proc sync_send(Locality ch, Object msg) {
-    val Locality sender = getPhysical(self)
-    out("sync_send", msg, sender)@ch
-    in("sync_ack", msg, sender)@self
+	val Locality sender = getPhysical(self)
+    var Boolean isClosed = read_nb("chan_status", "closed")@ch
+    if(isClosed){
+    	println("panic: send on closed channel " + ch)
+    }
+    else{
+	    out("sync_send", msg, sender)@ch
+	    in("sync_ack", msg, sender)@self
+	    
+    }
 }
 
 
@@ -152,13 +192,30 @@ proc sync_send(Locality ch, Object msg) {
 //              <msg> will contain the received message
 proc sync_recv(Locality ch, Object returnTag) {
     val Locality receiver = getPhysical(self)
-    out("sync_recv", receiver)@ch
-    in("sync_msg", var Object msg)@self
-    out(returnTag, msg)@self
+    val Boolean isClosed = read_nb("chan_status", "closed")@ch
+    
+    if(isClosed) {
+        out(returnTag, null)@self
+    }
+    else {
+        out("sync_recv", receiver)@ch
+        in("sync_msg", var Object msg)@self
+        out(returnTag, msg)@self
+    }
 }
 
-proc sync_close(Locality chan) {
-    // FIXME
+proc sync_close(Locality ch, Object returnTag) {
+    val Boolean alreadyClosed = read_nb("chan_status", "closed")@ch
+    
+    if(alreadyClosed) {
+        println("panic: close of closed channel")
+        out(returnTag, false)@self
+    }
+    else {
+        out("chan_status", "closed")@ch
+        println("[ChannelFactory] Closed channel: " + ch)
+        out(returnTag, true)@self
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +224,65 @@ proc sync_close(Locality chan) {
 // network (see below), and assign it a logical Locality
 // ---------------------------------------------------------------------------
 
-// FIXME Copy here when complete - for now see test files for the most up-to-date
-// channel factory (node) code
+//node ChannelFactory logical "channel_factory"{
+//    println("[ChannelFactory] Initialized")
+//    
+//	// Main loop that listens for new channel requests
+//    while(true) {
+//        println("[ChannelFactory] Waiting for channel create requests...")
+//
+//        in("make_chan", var String chanType, var String chanName, var Locality requester)@self
+//        println("[ChannelFactory] Request for channel: " + chanName + " (" + chanType + ")")
+//
+//        // Check if the channel already exists
+//        // Use Object for the Locality since we get a class error otherwise
+//        var String otherChanType = ""
+//        if(chanType == "async"){
+//            otherChanType = "sync"
+//        }
+//        else if(chanType == "sync"){
+//            otherChanType = "async"
+//        }
+//
+//		// read_nb errors if we don't use Object type so just use that for now 
+//        val Boolean exists = read_nb("chan_registered", chanType, chanName, var Object locObj)@self
+//        val Boolean existsOther = read_nb("chan_registered", otherChanType, chanName, var Object locObj)@self
+//
+//        if(existsOther) {
+//            println("[ChannelFactory] ERROR channel " + chanName + " already exists as " + otherChanType)
+//            
+//		  // Send to requester
+//            out("new_chan", chanType, chanName, null)@requester
+//        }
+//        else if (exists) {
+//            // Read from registry
+//            read_nb("chan_registered", chanType, chanName, var Locality existingChan)@self
+//            println("[ChannelFactory] Found existing channel: " + existingChan)
+//
+//            // Send to requester
+//            out("new_chan", chanType, chanName, existingChan)@requester
+//
+//        } else {
+//            println("[ChannelFactory] Creating new channel for: " + chanName)
+//            val Locality newChan = newloc()
+//
+//            // Evaluate channel process
+//            if(chanType == "async"){
+//                eval(new async_channel(chanName))@newChan
+//            }
+//            else if(chanType == "sync"){
+//                eval(new sync_channel(chanName))@newChan
+//            }
+//
+//            // Store in registry
+//            out("chan_registered", chanType, chanName, newChan)@self
+//            println("[ChannelFactory] Stored channel in registry: (" + chanName + ", " + newChan + ")")
+//
+//            // Send to requester
+//            out("new_chan", chanType, chanName, newChan)@requester
+//        }
+//    }
+//
+//}
 
 
