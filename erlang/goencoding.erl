@@ -2,7 +2,8 @@
 
 -module(goencoding).
 -export([sync_new/0, sync_send/2, sync_recv/1, sync_close/1,
-         async_new/1, async_send/2, async_recv/1, async_close/1]).
+         async_new/1, async_send/2, async_recv/1, async_close/1,
+         panic/1, recover/1]).
 
 %% ---------------------------------------------------------------------------
 %% SYNCHRONOUS CHANNELS
@@ -43,8 +44,7 @@ sync_channel_loop(ChannelState, Closed) ->
                     if
                         Closed ->
                             %% Send on closed channel - panic in Go!
-                            io:format("panic: send on closed channel~n"),
-                            SenderPid ! {error, closed},
+                            exit(SenderPid, {panic, send_on_closed_channel}),
                             sync_channel_loop(none, Closed);
                         true ->
                             %% No receiver waiting, sender blocks
@@ -68,8 +68,7 @@ sync_channel_loop(ChannelState, Closed) ->
                     if
                         Closed ->
                             %% Close of closed channel - panic in Go!
-                            io:format("panic: close of closed channel~n"),
-                            CloserPid ! {error, already_closed},
+                            exit(CloserPid, {panic, close_of_closed_channel}),
                             sync_channel_loop(none, Closed);
                         true ->
                             %% Mark channel as closed
@@ -92,13 +91,12 @@ sync_channel_loop(ChannelState, Closed) ->
                     if
                         Closed ->
                             %% Close of closed channel - panic in Go!
-                            io:format("panic: close of closed channel~n"),
-                            CloserPid ! {error, already_closed},
+                            exit(CloserPid, {panic, close_of_closed_channel}),
                             sync_channel_loop({waiting_sender, SenderPid, Msg}, Closed);
                         true ->
                             %% Channel closed while sender waiting
                             %% Notify waiting sender with error
-                            SenderPid ! {error, closed},
+                            exit(SenderPid, {panic, send_on_closed_channel}),
                             CloserPid ! ok,
                             sync_channel_loop(none, true)
                     end
@@ -113,8 +111,7 @@ sync_channel_loop(ChannelState, Closed) ->
                     if
                         Closed ->
                             %% Send on closed channel - panic in Go!
-                            io:format("panic: send on closed channel~n"),
-                            SenderPid ! {error, closed},
+                            exit(SenderPid, {panic, send_on_closed_channel}),
                             sync_channel_loop({waiting_receiver, RecvPid}, Closed);
                         true ->
                             %% Sender arrived! Rendezvous
@@ -127,13 +124,12 @@ sync_channel_loop(ChannelState, Closed) ->
                     if
                         Closed ->
                             %% Close of closed channel - panic in Go!
-                            io:format("panic: close of closed channel~n"),
-                            CloserPid ! {error, already_closed},
+                            exit(CloserPid, {panic, close_of_closed_channel}),
                             sync_channel_loop({waiting_receiver, RecvPid}, Closed);
                         true ->
                             %% Channel closed while receiver waiting
                             %% Notify waiting receiver
-                            RecvPid ! closed,
+                            exit(RecvPid, {panic, recv_on_closed_channel}),
                             CloserPid ! ok,
                             sync_channel_loop(none, true)
                     end
@@ -358,3 +354,26 @@ async_close(ChannelPid) ->
 %%   sync_send(ReceivedCh, 42),  % Use the received channel
 %%
 %% This works for both sync_* and async_* channel functions.
+
+
+%% ---------------------------------------------------------------------------
+%% PANIC UTILITIES (Go-like panic/recover model)
+%% ---------------------------------------------------------------------------
+
+%% panic(Reason) -> no_return()
+%% Kills the calling process with a reason, like Go's panic().
+%% The process dies and propagates to linked processes unless caught.
+panic(Reason) ->
+    io:format("panic: ~p in process ~p~n", [Reason, self()]),
+    exit(Reason).
+
+%% recover(Fun) -> {ok, Result} | {panic, Reason}
+%% Executes Fun and catches any panic (exit signal).
+%% Like Go's defer + recover() pattern.
+recover(Fun) ->
+    try Fun() of
+        Result -> {ok, Result}
+    catch
+        exit:Reason -> {panic, Reason};
+        error:Reason -> {panic, Reason}
+    end.
