@@ -2,8 +2,7 @@ package goencodingtest
 
 import goencoding.*
 
-net TestAsync physical "localhost:9999"{
-
+net TestAsync physical "tcp-127.0.0.1:9999"{
 
 	node ChannelFactory logical "channel_factory"{
 	    println("[ChannelFactory] Initialized")
@@ -49,7 +48,8 @@ net TestAsync physical "localhost:9999"{
 	
 	            // Evaluate channel process
 	            if(chanType == "async"){
-	                eval(new async_channel(chanName))@newChan
+    				in("make_chan", "async", chanName, var Integer capacity)@self
+	                eval(new async_channel(chanName, capacity))@newChan
 	            }
 	            else if(chanType == "sync"){
 	                eval(new sync_channel(chanName))@newChan
@@ -64,20 +64,23 @@ net TestAsync physical "localhost:9999"{
 	        }
 	    }
 	
-	}
-
+	}   
+  
     node NodeA {
+//    node NodeA [channel_factory -> phyloc("tcp-127.0.0.1:9998")] {
+//    	login(channel_factory)
+        
         val String chanName = "channelX"
         val Locality returnTag = self
 
 
         println("[NodeA] Requesting channel... " + chanName)
-        eval(new async_new(channel_factory, chanName, returnTag))@self
+        eval(new async_new(channel_factory, chanName, 5, returnTag))@self
         in(returnTag, var Locality ch)@self
         println("[NodeA] Got channel " + ch)
 
         println("[NodeA] Requesting channel... " + chanName)
-        eval(new async_new(channel_factory, chanName, returnTag))@self
+        eval(new async_new(channel_factory, chanName, 10, returnTag))@self
         in(returnTag, var Locality ch2)@self
         println("[NodeA] Got channel " + ch2 + ", should be the same as above (" + (ch2==ch) + ")")
 
@@ -86,46 +89,61 @@ net TestAsync physical "localhost:9999"{
 //        in(returnTag, var Locality ch3)@self
 //        println("[NodeA] ERROR this should not print...")
 
-        var msg = 42
-        eval(new async_send(ch, msg))@self
-        println("[NodeA] Sent message " + msg)
+//        var msg = 42
+//        eval(new async_send(ch, msg))@self
+//        println("[NodeA] Sent message " + msg)
+//        
+       
+        eval(new async_send(ch, 1))@self
+        eval(new async_send(ch, 2))@self
+        eval(new async_send(ch, 3))@self
+        eval(new async_send(ch, 4))@self
+        eval(new async_send(ch, 5))@self
+        eval(new async_send(ch, 6))@self
+        eval(new async_send(ch, 7))@self
+        eval(new async_send(ch, 8))@self
+        println("[NodeA] Sent 8 messages ")
+        
         
                 
-        eval(new async_close(self, returnTag))@self
-        in(returnTag, var Boolean closeStatus3)@self
-        println("[NodeA] Close channel status " + closeStatus3)
+//        eval(new async_close(self, returnTag))@self
+//        in(returnTag, var Boolean closeStatus3)@self
+//        println("[NodeA] Close channel status " + closeStatus3)
         
-        eval(new async_close(ch, returnTag))@self
-        in(returnTag, var Boolean closeStatus)@self
-        println("[NodeA] Close channel status " + closeStatus)
+//        eval(new async_close(ch, returnTag))@self
+//        in(returnTag, var Boolean closeStatus)@self
+//        println("[NodeA] Close channel status " + closeStatus)
         
-        eval(new async_close(ch, "sadfasdf"))@self
-        in("sadfasdf", var Boolean closeStatus2)@self
-        println("[NodeA] Close channel status " + closeStatus2)
-        
-        
-        // Try to send on a closed channel
-        var msg2 = 24
-        eval(new async_send(ch, msg2))@self
-        println("[NodeA] Sent message " + msg2)
+//        eval(new async_close(ch, "sadfasdf"))@self
+//        in("sadfasdf", var Boolean closeStatus2)@self
+//        println("[NodeA] Close channel status " + closeStatus2)
+//        
+//        
+//        // Try to send on a closed channel
+//        var msg2 = 24
+//        eval(new async_send(ch, msg2))@self
+//        println("[NodeA] Sent message " + msg2)
         
     }
 
     node NodeB {
+//    node NodeB [channel_factory -> phyloc("tcp-127.0.0.1:9998")]{
+//    	login(channel_factory)
+    	
         val String chanName = "channelX"
         val Locality returnTag = self
 
-        eval(new async_new(channel_factory, chanName, returnTag))@self
+        eval(new async_new(channel_factory, chanName, 5, returnTag))@self
         in(returnTag, var Locality ch)@self
         println("[NodeB] Got channel " + ch)
 
-        eval(new async_recv(ch, returnTag))@self
-        in(returnTag, var Object msg)@self
-        println("[NodeB] Got message " + msg)
-        
-        eval(new async_recv(ch, returnTag))@self
-        in(returnTag, var Object msg2)@self
-        println("[NodeB] Got message " + msg2)
+//        eval(new async_recv(ch, returnTag))@self
+//        in(returnTag, var Object msg)@self
+//        println("[NodeB] Got message " + msg)
+//        
+//        eval(new async_recv(ch, returnTag))@self
+//        in(returnTag, var Object msg2)@self
+//        println("[NodeB] Got message " + msg2)
 
     }
 

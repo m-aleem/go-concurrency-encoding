@@ -48,7 +48,8 @@ net TestSync physical "localhost:9999"{
 	
 	            // Evaluate channel process
 	            if(chanType == "async"){
-	                eval(new async_channel(chanName))@newChan
+    				in("make_chan", "async", chanName, var Integer capacity)@self
+	                eval(new async_channel(chanName, capacity))@newChan
 	            }
 	            else if(chanType == "sync"){
 	                eval(new sync_channel(chanName))@newChan
