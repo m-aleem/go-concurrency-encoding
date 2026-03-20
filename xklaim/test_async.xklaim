@@ -6,146 +6,83 @@ net TestAsync physical "tcp-127.0.0.1:9999"{
 
 	node ChannelFactory logical "channel_factory"{
 	    println("[ChannelFactory] Initialized")
+	    var Integer numChans = 0
 	    
 		// Main loop that listens for new channel requests
 	    while(true) {
 	        println("[ChannelFactory] Waiting for channel create requests...")
 	
-	        in("make_chan", var String chanType, var String chanName, var Locality requester)@self
-	        println("[ChannelFactory] Request for channel: " + chanName + " (" + chanType + ")")
-	
-	        // Check if the channel already exists
-	        // Use Object for the Locality since we get a class error otherwise
-	        var String otherChanType = ""
-	        if(chanType == "async"){
-	            otherChanType = "sync"
-	        }
-	        else if(chanType == "sync"){
-	            otherChanType = "async"
-	        }
-	
-			// read_nb errors if we don't use Object type so just use that for now 
-	        val Boolean exists = read_nb("chan_registered", chanType, chanName, var Object locObj)@self
-	        val Boolean existsOther = read_nb("chan_registered", otherChanType, chanName, var Object locObj)@self
-	
-	        if(existsOther) {
-	            println("[ChannelFactory] ERROR channel " + chanName + " already exists as " + otherChanType)
-	            
-			  // Send to requester
-	            out("new_chan", chanType, chanName, null)@requester
-	        }
-	        else if (exists) {
-	            // Read from registry
-	            read_nb("chan_registered", chanType, chanName, var Locality existingChan)@self
-	            println("[ChannelFactory] Found existing channel: " + existingChan)
-	
-	            // Send to requester
-	            out("new_chan", chanType, chanName, existingChan)@requester
-	
-	        } else {
-	            println("[ChannelFactory] Creating new channel for: " + chanName)
-	            val Locality newChan = newloc()
-	
-	            // Evaluate channel process
-	            if(chanType == "async"){
-    				in("make_chan", "async", chanName, var Integer capacity)@self
-	                eval(new async_channel(chanName, capacity))@newChan
-	            }
-	            else if(chanType == "sync"){
-	                eval(new sync_channel(chanName))@newChan
-	            }
-	
-	            // Store in registry
-	            out("chan_registered", chanType, chanName, newChan)@self
-	            println("[ChannelFactory] Stored channel in registry: (" + chanName + ", " + newChan + ")")
-	
-	            // Send to requester
-	            out("new_chan", chanType, chanName, newChan)@requester
-	        }
-	    }
+	        in("make_chan", var Object returnTag, var String chanType, var Integer capacity, var Object msgType, var Locality requester)@self
+	        numChans++
+	        println("[ChannelFactory] Request for channel of type chanType " + chanType)
+
+
+            val Locality newChan = newloc()
+
+            // Evaluate (kick off) channel process
+            if(chanType == "async"){
+                eval(new async_channel(capacity))@newChan
+            }
+            else if(chanType == "sync"){
+                eval(new sync_channel())@newChan
+            }
+            
+            // Put channel capacity and message type in its tuple space, for easy read access
+        	out("capacity", capacity)@newChan
+            out("msgType", msgType)@newChan
+
+            // Store in registry
+            out("chan_registered", numChans, chanType, capacity, msgType, newChan)@self
+            println("[ChannelFactory] Stored channel in registry: (" + numChans + ": " + newChan + ")")
+
+            // Send to requester
+            out("new_chan", returnTag, chanType, newChan)@requester
+		}
 	
 	}   
-  
+    
     node NodeA {
-//    node NodeA [channel_factory -> phyloc("tcp-127.0.0.1:9998")] {
-//    	login(channel_factory)
         
-        val String chanName = "channelX"
         val Locality returnTag = self
 
 
-        println("[NodeA] Requesting channel... " + chanName)
-        eval(new async_new(channel_factory, chanName, 5, returnTag))@self
+        println("[NodeA] Requesting channel... " )
+        eval(new async_new(channel_factory, 3, Integer, returnTag))@self
         in(returnTag, var Locality ch)@self
         println("[NodeA] Got channel " + ch)
+        
+        out(ch)@node_b
+        out(ch)@node_c
+        
+    }
 
-        println("[NodeA] Requesting channel... " + chanName)
-        eval(new async_new(channel_factory, chanName, 10, returnTag))@self
-        in(returnTag, var Locality ch2)@self
-        println("[NodeA] Got channel " + ch2 + ", should be the same as above (" + (ch2==ch) + ")")
-
-//        println("[NodeA] Requesting channel... " + chanName)
-//        eval(new sync_new(channel_factory, chanName, returnTag))@self
-//        in(returnTag, var Locality ch3)@self
-//        println("[NodeA] ERROR this should not print...")
-
-//        var msg = 42
+    node NodeB logical "node_b"{
+    	in(var Locality ch)@self
+        println("[Node B] Got channel " + ch)
+        
+//        var msg = 1
+////        var msg = 1.24F // Float, wrong type
 //        eval(new async_send(ch, msg))@self
-//        println("[NodeA] Sent message " + msg)
-//        
-       
-        eval(new async_send(ch, 1))@self
-        eval(new async_send(ch, 2))@self
-        eval(new async_send(ch, 3))@self
-        eval(new async_send(ch, 4))@self
-        eval(new async_send(ch, 5))@self
-        eval(new async_send(ch, 6))@self
-        eval(new async_send(ch, 7))@self
-        eval(new async_send(ch, 8))@self
-        println("[NodeA] Sent 8 messages ")
-        
-        
-                
-//        eval(new async_close(self, returnTag))@self
-//        in(returnTag, var Boolean closeStatus3)@self
-//        println("[NodeA] Close channel status " + closeStatus3)
-        
-//        eval(new async_close(ch, returnTag))@self
-//        in(returnTag, var Boolean closeStatus)@self
-//        println("[NodeA] Close channel status " + closeStatus)
-        
-//        eval(new async_close(ch, "sadfasdf"))@self
-//        in("sadfasdf", var Boolean closeStatus2)@self
-//        println("[NodeA] Close channel status " + closeStatus2)
-//        
-//        
-//        // Try to send on a closed channel
-//        var msg2 = 24
-//        eval(new async_send(ch, msg2))@self
-//        println("[NodeA] Sent message " + msg2)
-        
-    }
-
-    node NodeB {
-//    node NodeB [channel_factory -> phyloc("tcp-127.0.0.1:9998")]{
-//    	login(channel_factory)
-    	
-        val String chanName = "channelX"
-        val Locality returnTag = self
-
-        eval(new async_new(channel_factory, chanName, 5, returnTag))@self
-        in(returnTag, var Locality ch)@self
-        println("[NodeB] Got channel " + ch)
-
-//        eval(new async_recv(ch, returnTag))@self
-//        in(returnTag, var Object msg)@self
-//        println("[NodeB] Got message " + msg)
-//        
-//        eval(new async_recv(ch, returnTag))@self
-//        in(returnTag, var Object msg2)@self
-//        println("[NodeB] Got message " + msg2)
+//        println("[Node B] Sent message " + msg)
+//
+	eval(new async_send(ch, 1))@self
+	eval(new async_send(ch, 2))@self
+	eval(new async_send(ch, 3))@self
+	eval(new async_send(ch, 4))@self
+	eval(new async_send(ch, 5))@self
 
     }
+
+    node NodeC logical "node_c" {
+    	in(var Locality ch)@self
+        println("[Node C] Got channel " + ch)
+        
+        eval(new async_recv(ch, self))@self
+        in(self, var Integer msg)@self
+        println("[Node C] Recv message " + msg)
+
+    }
+    
 
     // FIXME -- test idea, try swapping calls from @self to the other localities and see if this still works!
 
