@@ -29,6 +29,7 @@ test_close_sync_receiver(Ch) ->
     end.
 
 test_close_sync() ->
+    OldTrapExit = process_flag(trap_exit, true),
     Ch = goencoding:sync_new(),
     Parent = self(),
 
@@ -41,24 +42,38 @@ test_close_sync() ->
     timer:sleep(100), % Ensure receiver is ready before sender starts
 
     io:format("[close] Spawned Sync sender goroutine...~n"),
-    spawn(fun() ->
+    SenderPid = spawn_link(fun() ->
         test_close_sync_sender(Ch, 5),
         Parent ! {done, sender}
     end),
 
     % Wait for both to complete
     receive {done, receiver} -> ok end,
-    receive {done, sender} -> ok end.
+    receive
+        {done, sender} -> ok;
+        {'EXIT', SenderPid, Reason} ->
+            io:format("[close] Sync Sender panic: ~p~n", [Reason])
+    end,
+    process_flag(trap_exit, OldTrapExit).
 
 test_close_async() ->
     io:format("[close async] FIXME~n").
 
 test_close_closed() ->
     Ch = goencoding:sync_new(),
+    Parent = self(),
     io:format("[close closed] Close channel first time~n"),
     goencoding:sync_close(Ch),
     io:format("[close closed] Close channel second time~n"),
-    goencoding:sync_close(Ch).
+    {CloserPid, Ref} = spawn_monitor(fun() ->
+        goencoding:sync_close(Ch),
+        Parent ! {done, close_second_time}
+    end),
+    receive
+        {done, close_second_time} -> ok;
+        {'DOWN', Ref, process, CloserPid, Reason} ->
+            io:format("[close closed] Panic on second close: ~p~n", [Reason])
+    end.
 
 
 %% ---------------------------------------------------------------------------

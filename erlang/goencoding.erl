@@ -96,8 +96,8 @@ sync_channel_loop(ChannelState, Closed) ->
                         true ->
                             %% Channel closed while sender waiting
                             %% Notify waiting sender with error
-                            exit(SenderPid, {panic, send_on_closed_channel}),
                             CloserPid ! ok,
+                            exit(SenderPid, {panic, send_on_closed_channel}),
                             sync_channel_loop(none, true)
                     end
             end;
@@ -129,8 +129,8 @@ sync_channel_loop(ChannelState, Closed) ->
                         true ->
                             %% Channel closed while receiver waiting
                             %% Notify waiting receiver
-                            exit(RecvPid, {panic, recv_on_closed_channel}),
                             CloserPid ! ok,
+                            exit(RecvPid, {panic, recv_on_closed_channel}),
                             sync_channel_loop(none, true)
                     end
             end
@@ -213,8 +213,7 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) -
                 Closed ->
                     %% Send on closed channel - panic in Go!
                     %% In Erlang, we notify sender with error and print to console
-                    io:format("panic: send on closed channel~n"),
-                    SenderPid ! {error, closed},
+                    exit(SenderPid, {panic, send_on_closed_channel}),
                     async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed);
                 true ->
                     case queue:out(WaitingReceivers) of
@@ -291,8 +290,7 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) -
                 Closed ->
                     %% Close of closed channel - panic in Go!
                     %% In Erlang, we print to console and notify caller
-                    io:format("panic: close of closed channel~n"),
-                    CloserPid ! {error, already_closed},
+                    exit(CloserPid, {panic, close_of_closed_channel}),
                     async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed);
                 true ->
                     %% Mark channel as closed, notify all waiting receivers and senders
