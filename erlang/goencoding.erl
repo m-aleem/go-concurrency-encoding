@@ -1,8 +1,8 @@
 %% goencoding.erl
 
 -module(goencoding).
--export([sync_new/0, sync_send/2, sync_recv/1, sync_close/1,
-         async_new/1, async_send/2, async_recv/1, async_close/1,
+-export([sync_new/0, sync_new/1, sync_send/2, sync_recv/1, sync_close/1,
+         async_new/1, async_new/2, async_send/2, async_recv/1, async_close/1,
          panic/1, recover/1]).
 
 %% ---------------------------------------------------------------------------
@@ -10,10 +10,18 @@
 %% ---------------------------------------------------------------------------
 
 %% sync_new() -> ChannelPid
-%% Creates a new synchronous channel (like Go's make(chan T))
+%% Creates a new untyped synchronous channel (like Go's make(chan any))
 %% Returns: Pid of the channel process
 sync_new() ->
-    spawn(fun() -> sync_channel_loop(none, false) end).
+    sync_new(fun(_) -> true end).
+
+%% sync_new(TypeCheck) -> ChannelPid
+%% Creates a new typed synchronous channel (like Go's make(chan T))
+%% TypeCheck: a predicate fun(Msg) -> boolean() that validates message types
+%% Returns: Pid of the channel process
+%% Example: sync_new(fun is_integer/1) creates a chan int equivalent
+sync_new(TypeCheck) ->
+    spawn(fun() -> sync_channel_loop(none, false, TypeCheck) end).
 
 %% Internal Channel Process for Synchronous Channels
 %%
@@ -34,7 +42,7 @@ sync_new() ->
 %% recv or close messages, and any send messages will accumulate in the
 %% mailbox until the waiting sender is handled. See inline comments for more details.
 
-sync_channel_loop(ChannelState, Closed) ->
+sync_channel_loop(ChannelState, Closed, TypeCheck) ->
     case ChannelState of
         none ->
             %% No one waiting, accept any operation
@@ -44,11 +52,19 @@ sync_channel_loop(ChannelState, Closed) ->
                     if
                         Closed ->
                             %% Send on closed channel - panic in Go!
-                            exit(SenderPid, {panic, send_on_closed_channel}),
-                            sync_channel_loop(none, Closed);
+                            SenderPid ! {panic, send_on_closed_channel},
+                            sync_channel_loop(none, Closed, TypeCheck);
                         true ->
-                            %% No receiver waiting, sender blocks
-                            sync_channel_loop({waiting_sender, SenderPid, Msg}, Closed)
+                            %% Validate message type before accepting
+                            case TypeCheck(Msg) of
+                                true ->
+                                    %% No receiver waiting, sender blocks
+                                    sync_channel_loop({waiting_sender, SenderPid, Msg}, Closed, TypeCheck);
+                                false ->
+                                    %% Type mismatch - panic like Go's compile-time type error at runtime
+                                    SenderPid ! {panic, {type_error, Msg}},
+                                    sync_channel_loop(none, Closed, TypeCheck)
+                            end
                     end;
 
                 {recv, RecvPid} ->
@@ -57,10 +73,10 @@ sync_channel_loop(ChannelState, Closed) ->
                         Closed ->
                             %% Receive on closed channel with no sender
                             RecvPid ! closed,
-                            sync_channel_loop(none, Closed);
+                            sync_channel_loop(none, Closed, TypeCheck);
                         true ->
                             %% No sender waiting, receiver blocks
-                            sync_channel_loop({waiting_receiver, RecvPid}, Closed)
+                            sync_channel_loop({waiting_receiver, RecvPid}, Closed, TypeCheck)
                     end;
 
                 {close_channel, CloserPid} ->
@@ -68,12 +84,12 @@ sync_channel_loop(ChannelState, Closed) ->
                     if
                         Closed ->
                             %% Close of closed channel - panic in Go!
-                            exit(CloserPid, {panic, close_of_closed_channel}),
-                            sync_channel_loop(none, Closed);
+                            CloserPid ! {panic, close_of_closed_channel},
+                            sync_channel_loop(none, Closed, TypeCheck);
                         true ->
                             %% Mark channel as closed
                             CloserPid ! ok,
-                            sync_channel_loop(none, true)
+                            sync_channel_loop(none, true, TypeCheck)
                     end
             end;
 
@@ -85,20 +101,20 @@ sync_channel_loop(ChannelState, Closed) ->
                     %% Receiver arrived!
                     RecvPid ! {ok, Msg},
                     SenderPid ! ok,
-                    sync_channel_loop(none, Closed);
+                    sync_channel_loop(none, Closed, TypeCheck);
 
                 {close_channel, CloserPid} ->
                     if
                         Closed ->
                             %% Close of closed channel - panic in Go!
-                            exit(CloserPid, {panic, close_of_closed_channel}),
-                            sync_channel_loop({waiting_sender, SenderPid, Msg}, Closed);
+                            CloserPid ! {panic, close_of_closed_channel},
+                            sync_channel_loop({waiting_sender, SenderPid, Msg}, Closed, TypeCheck);
                         true ->
                             %% Channel closed while sender waiting
-                            %% Notify waiting sender with error
+                            %% Sender gets panic because it sent on now-closed channel
+                            SenderPid ! {panic, send_on_closed_channel},
                             CloserPid ! ok,
-                            exit(SenderPid, {panic, send_on_closed_channel}),
-                            sync_channel_loop(none, true)
+                            sync_channel_loop(none, true, TypeCheck)
                     end
             end;
 
@@ -111,40 +127,49 @@ sync_channel_loop(ChannelState, Closed) ->
                     if
                         Closed ->
                             %% Send on closed channel - panic in Go!
-                            exit(SenderPid, {panic, send_on_closed_channel}),
-                            sync_channel_loop({waiting_receiver, RecvPid}, Closed);
+                            SenderPid ! {panic, send_on_closed_channel},
+                            sync_channel_loop({waiting_receiver, RecvPid}, Closed, TypeCheck);
                         true ->
-                            %% Sender arrived! Rendezvous
-                            RecvPid ! {ok, Msg},
-                            SenderPid ! ok,
-                            sync_channel_loop(none, Closed)
+                            %% Validate message type before rendezvous
+                            case TypeCheck(Msg) of
+                                true ->
+                                    %% Sender arrived! Rendezvous
+                                    RecvPid ! {ok, Msg},
+                                    SenderPid ! ok,
+                                    sync_channel_loop(none, Closed, TypeCheck);
+                                false ->
+                                    %% Type mismatch - panic like Go's compile-time type error at runtime
+                                    SenderPid ! {panic, {type_error, Msg}},
+                                    sync_channel_loop({waiting_receiver, RecvPid}, Closed, TypeCheck)
+                            end
                     end;
 
                 {close_channel, CloserPid} ->
                     if
                         Closed ->
                             %% Close of closed channel - panic in Go!
-                            exit(CloserPid, {panic, close_of_closed_channel}),
-                            sync_channel_loop({waiting_receiver, RecvPid}, Closed);
+                            CloserPid ! {panic, close_of_closed_channel},
+                            sync_channel_loop({waiting_receiver, RecvPid}, Closed, TypeCheck);
                         true ->
                             %% Channel closed while receiver waiting
-                            %% Notify waiting receiver
+                            %% In Go, recv on closed channel returns zero value (not panic)
+                            RecvPid ! closed,
                             CloserPid ! ok,
-                            exit(RecvPid, {panic, recv_on_closed_channel}),
-                            sync_channel_loop(none, true)
+                            sync_channel_loop(none, true, TypeCheck)
                     end
             end
     end.
 
-%% sync_send(ChannelPid, Msg) -> ok | {error, closed}
+%% sync_send(ChannelPid, Msg) -> ok
 %% Sends a message on the channel (like Go's ch <- msg)
 %% Blocks until a receiver is ready to receive
 %% In Go, sending on a closed channel causes a panic
+%% Raises panic if channel is closed
 sync_send(ChannelPid, Msg) ->
     ChannelPid ! {send, self(), Msg},
     receive
         ok -> ok;
-        {error, closed} -> {error, closed}
+        {panic, Reason} -> panic(Reason)
     end.
 
 %% sync_recv(ChannelPid) -> {ok, Msg} | closed
@@ -158,16 +183,16 @@ sync_recv(ChannelPid) ->
         closed -> closed
     end.
 
-%% sync_close(ChannelPid) -> ok | {error, already_closed}
+%% sync_close(ChannelPid) -> ok
 %% Closes the channel (like Go's close(ch))
 %% From https://go.dev/tour/concurrency/4:
 %% Note: Only the sender should close a channel, never the receiver.
-%% In Go, closing an already-closed channel causes a panic
+%% Raises panic if already closed
 sync_close(ChannelPid) ->
     ChannelPid ! {close_channel, self()},
     receive
         ok -> ok;
-        {error, already_closed} -> {error, already_closed}
+        {panic, Reason} -> panic(Reason)
     end.
 
 %% ---------------------------------------------------------------------------
@@ -175,16 +200,20 @@ sync_close(ChannelPid) ->
 %% ---------------------------------------------------------------------------
 
 %% async_new(Capacity) -> ChannelPid
-%% Creates a new asynchronous (buffered) channel (like Go's make(chan T, capacity))
+%% Creates a new untyped asynchronous (buffered) channel (like Go's make(chan any, capacity))
 %% Capacity: maximum number of messages that can be buffered
 %% Returns: Pid of the channel process
 async_new(Capacity) ->
-    %% Initiate asynchronous channel process with an internal loop
-    %% and (unbounded) queue for buffering messages, but specify
-    %% the capacity limit for blocking behavior.
-    %% Also, initialize with empty waiting receivers and senders
-    %% lists, and closed = false
-    spawn(fun() -> async_channel_loop(queue:new(), Capacity, queue:new(), queue:new(), false) end).
+    async_new(Capacity, fun(_) -> true end).
+
+%% async_new(Capacity, TypeCheck) -> ChannelPid
+%% Creates a new typed asynchronous (buffered) channel (like Go's make(chan T, capacity))
+%% Capacity: maximum number of messages that can be buffered
+%% TypeCheck: a predicate fun(Msg) -> boolean() that validates message types
+%% Returns: Pid of the channel process
+%% Example: async_new(5, fun is_integer/1) creates a chan int with buffer size 5
+async_new(Capacity, TypeCheck) ->
+    spawn(fun() -> async_channel_loop(queue:new(), Capacity, queue:new(), queue:new(), false, TypeCheck) end).
 
 %% Internal Channel Process for Asynchronous Channels
 %%
@@ -204,7 +233,7 @@ async_new(Capacity) ->
 %% The channel process handles these messages according to whether
 %% the channel is closed, whether there are waiting receivers or
 %% senders.
-async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) ->
+async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed, TypeCheck) ->
     BufferSize = queue:len(Buffer),
     receive
         {send, SenderPid, Msg} ->
@@ -212,30 +241,37 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) -
             if
                 Closed ->
                     %% Send on closed channel - panic in Go!
-                    %% In Erlang, we notify sender with error and print to console
-                    exit(SenderPid, {panic, send_on_closed_channel}),
-                    async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed);
+                    SenderPid ! {panic, send_on_closed_channel},
+                    async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed, TypeCheck);
                 true ->
-                    case queue:out(WaitingReceivers) of
-                        {{value, RecvPid}, RestReceivers} ->
-                            %% Receiver waiting! Send directly (bypass buffer)
-                            RecvPid ! {ok, Msg},
-                            SenderPid ! ok,
-                            async_channel_loop(Buffer, Capacity, RestReceivers, WaitingSenders, Closed);
-                        {empty, _} ->
-                            %% No receiver waiting, check buffer space
-                            if
-                                BufferSize < Capacity ->
-                                    %% Buffer has space, accept message immediately
-                                    NewBuffer = queue:in(Msg, Buffer),
+                    %% Validate message type before accepting
+                    case TypeCheck(Msg) of
+                        true ->
+                            case queue:out(WaitingReceivers) of
+                                {{value, RecvPid}, RestReceivers} ->
+                                    %% Receiver waiting! Send directly (bypass buffer)
+                                    RecvPid ! {ok, Msg},
                                     SenderPid ! ok,
-                                    async_channel_loop(NewBuffer, Capacity, WaitingReceivers, WaitingSenders, Closed);
-                                true ->
-                                    %% Buffer full, sender must block
-                                    %% Store sender in waiting sender list
-                                    NewWaitingSenders = queue:in({SenderPid, Msg}, WaitingSenders),
-                                    async_channel_loop(Buffer, Capacity, WaitingReceivers, NewWaitingSenders, Closed)
-                            end
+                                    async_channel_loop(Buffer, Capacity, RestReceivers, WaitingSenders, Closed, TypeCheck);
+                                {empty, _} ->
+                                    %% No receiver waiting, check buffer space
+                                    if
+                                        BufferSize < Capacity ->
+                                            %% Buffer has space, accept message immediately
+                                            NewBuffer = queue:in(Msg, Buffer),
+                                            SenderPid ! ok,
+                                            async_channel_loop(NewBuffer, Capacity, WaitingReceivers, WaitingSenders, Closed, TypeCheck);
+                                        true ->
+                                            %% Buffer full, sender must block
+                                            %% Store sender in waiting sender list
+                                            NewWaitingSenders = queue:in({SenderPid, Msg}, WaitingSenders),
+                                            async_channel_loop(Buffer, Capacity, WaitingReceivers, NewWaitingSenders, Closed, TypeCheck)
+                                    end
+                            end;
+                        false ->
+                            %% Type mismatch - panic like Go's compile-time type error at runtime
+                            SenderPid ! {panic, {type_error, Msg}},
+                            async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed, TypeCheck)
                     end
             end;
 
@@ -251,10 +287,10 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) -
                             %% Sender waiting, add their message to buffer and unblock
                             NewBuffer2 = queue:in(WaitingMsg, NewBuffer),
                             WaitingSenderPid ! ok,
-                            async_channel_loop(NewBuffer2, Capacity, WaitingReceivers, RestSenders, Closed);
+                            async_channel_loop(NewBuffer2, Capacity, WaitingReceivers, RestSenders, Closed, TypeCheck);
                         {empty, _} ->
                             %% No senders waiting
-                            async_channel_loop(NewBuffer, Capacity, WaitingReceivers, WaitingSenders, Closed)
+                            async_channel_loop(NewBuffer, Capacity, WaitingReceivers, WaitingSenders, Closed, TypeCheck)
                     end;
                 {empty, _} ->
                     %% Buffer empty
@@ -262,7 +298,7 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) -
                         Closed ->
                             %% Buffer empty and channel closed
                             RecvPid ! closed,
-                            async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed);
+                            async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed, TypeCheck);
                         true ->
                             %% Buffer empty, receiver must block
                             case queue:out(WaitingSenders) of
@@ -276,11 +312,11 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) -
                                     %% because if senders are waiting, the buffer should be full.
                                     %% However, we handle it gracefully by doing a direct handoff and then
                                     %% checking for more waiting senders.
-                                    async_channel_loop(Buffer, Capacity, WaitingReceivers, RestSenders, Closed);
+                                    async_channel_loop(Buffer, Capacity, WaitingReceivers, RestSenders, Closed, TypeCheck);
                                 {empty, _} ->
                                     %% No senders waiting, receiver must wait
                                     NewWaitingReceivers = queue:in(RecvPid, WaitingReceivers),
-                                    async_channel_loop(Buffer, Capacity, NewWaitingReceivers, WaitingSenders, Closed)
+                                    async_channel_loop(Buffer, Capacity, NewWaitingReceivers, WaitingSenders, Closed, TypeCheck)
                             end
                     end
             end;
@@ -289,28 +325,27 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed) -
             if
                 Closed ->
                     %% Close of closed channel - panic in Go!
-                    %% In Erlang, we print to console and notify caller
-                    exit(CloserPid, {panic, close_of_closed_channel}),
-                    async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed);
+                    CloserPid ! {panic, close_of_closed_channel},
+                    async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed, TypeCheck);
                 true ->
                     %% Mark channel as closed, notify all waiting receivers and senders
                     lists:foreach(fun(RecvPid) -> RecvPid ! closed end, queue:to_list(WaitingReceivers)),
-                    lists:foreach(fun({SenderPid, _}) -> SenderPid ! {error, closed} end, queue:to_list(WaitingSenders)),
+                    lists:foreach(fun({SenderPid, _}) -> SenderPid ! {panic, send_on_closed_channel} end, queue:to_list(WaitingSenders)),
                     %% We do NOT explicitly empty the buffer here because in Go, closing a channel
                     %% does not discard buffered messages. Receivers can still receive buffered
                     %% messages until the buffer is empty per https://go.dev/ref/spec#Close
                     CloserPid ! ok,
-                    async_channel_loop(Buffer, Capacity, queue:new(), queue:new(), true)
+                    async_channel_loop(Buffer, Capacity, queue:new(), queue:new(), true, TypeCheck)
             end
-    end.%% async_send(ChannelPid, Msg) -> ok | {error, closed}
+    end.%% async_send(ChannelPid, Msg) -> ok
 %% Sends a message on the buffered channel (like Go's ch <- msg)
 %% Does not block if buffer has space; blocks if buffer is full
-%% In Go, sending on a closed channel causes a panic
+%% Raises panic if channel is closed
 async_send(ChannelPid, Msg) ->
     ChannelPid ! {send, self(), Msg},
     receive
         ok -> ok;
-        {error, closed} -> {error, closed}
+        {panic, Reason} -> panic(Reason)
     end.
 
 %% async_recv(ChannelPid) -> {ok, Msg} | closed
@@ -324,16 +359,16 @@ async_recv(ChannelPid) ->
         closed -> closed
     end.
 
-%% async_close(ChannelPid) -> ok | {error, already_closed}
+%% async_close(ChannelPid) -> ok
 %% Closes the buffered channel (like Go's close(ch))
 %% From https://go.dev/tour/concurrency/4:
 %% Note: Only the sender should close a channel, never the receiver.
-%% In Go, closing an already-closed channel causes a panic
+%% Raises panic if already closed
 async_close(ChannelPid) ->
     ChannelPid ! {close_channel, self()},
     receive
         ok -> ok;
-        {error, already_closed} -> {error, already_closed}
+        {panic, Reason} -> panic(Reason)
     end.
 
 %% ---------------------------------------------------------------------------
@@ -359,19 +394,22 @@ async_close(ChannelPid) ->
 %% ---------------------------------------------------------------------------
 
 %% panic(Reason) -> no_return()
-%% Kills the calling process with a reason, like Go's panic().
-%% The process dies and propagates to linked processes unless caught.
+%% Simulates a Go panic by terminating the calling process with exit/1.
+%% If the caller is wrapped in recover/1, the panic is caught.
+%% If not, the process dies and propagates to linked processes.
+%% This models Go's panic semantics: recoverable within the same goroutine
+%% via defer+recover, but fatal if unrecovered.
 panic(Reason) ->
-    io:format("panic: ~p in process ~p~n", [Reason, self()]),
-    exit(Reason).
+    exit({panic, Reason}).
 
 %% recover(Fun) -> {ok, Result} | {panic, Reason}
 %% Executes Fun and catches any panic (exit signal).
 %% Like Go's defer + recover() pattern.
+%% If Fun triggers a panic (via panic/1 or a channel operation on a closed
+%% channel), recover catches it and returns {panic, Reason}.
 recover(Fun) ->
     try Fun() of
         Result -> {ok, Result}
     catch
-        exit:Reason -> {panic, Reason};
-        error:Reason -> {panic, Reason}
+        exit:{panic, Reason} -> {panic, Reason}
     end.
