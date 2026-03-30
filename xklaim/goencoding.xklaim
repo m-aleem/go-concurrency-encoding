@@ -1,44 +1,143 @@
 package goencoding
+import java.util.LinkedList
+import java.time.LocalDateTime;
+import goencoding.SendReq
+import goencoding.RecvReq
 
 // ---------------------------------------------------------------------------
 // ASYNCHRONOUS COMMUNICATION
 // ---------------------------------------------------------------------------
 
-// Create a async channel; if the channel already exists in the channel
-// factories tuple space, this will return the existing channel Locality,
-// otherwise it will return the Locality of the newly created channel
+// Create a async channel. Will return the Locality of the newly created 
+// channel.
 //
 // Usage:
 //
 // 1) eval this process
 //       where: <chanFactory> Locality of the ChannelFactory node
-//              <chanName> Name of the channel
+//              <capacity> Capacity of the channel
+//              <msgType> Type of the channel such as Integer, Float, Boolean, etc. or Locality (to pass channel)
 //              <returnTag> Unique return tag to read channel Locality
 // 2) in(returnTag, var Locality <ch>)
 //       where: <returnTag> Same return tag used to eval process
 //              <ch> will be the Locality of the new channel
-proc async_new(Locality chanFactory, String chanName, Object returnTag) {
+proc async_new(Locality chanFactory, Integer capacity, Object msgType, Object returnTag) {
     val Locality requester = getPhysical(self)
-    out("make_chan", "async", chanName, requester)@chanFactory
-    in("new_chan", "async", chanName, var Locality ch)@self
+    val String chCreateTime = LocalDateTime.now().toString()
+    out("make_chan", chCreateTime, "async", capacity, msgType, requester)@chanFactory
+    in("new_chan", chCreateTime, "async", var Locality ch)@self
     out(returnTag, ch)@self
 }
 
 // Main worker process of an async channel that gets initiated with the
-// channel is created. Waits for an async send request in the channel's
-// tuple space. Upon receiving the requests, writes the message into
-// the tuple space (i.e. is non-blocking).
+// channel is created. Waits for an async send/recv requests. Sends will
+// not block if the buffer is not at capacity while recvs will always
+// block.
 //
 // This process should NOT be evaluated directly by user, it is designed
 // for the channel factory, only
-proc async_channel(String chanName){
-    println("[Ch " + chanName + "] ASYNC Channel process started")
-    // FIXME Incorporate close logic, eventually
+proc async_channel(Integer capacity){
+    println("[Ch ] ASYNC Channel process started")
+
+    // Queues of senders and receivers 
+    out("send_q", new LinkedList<SendReq>())@self
+    out("recv_q", new LinkedList<RecvReq>())@self
+    
+    // Message buffer
+    out("msg_buffer", new LinkedList<SendReq>())@self
+    out("buffer_size", 0)@self // Easier to keep track of size here than call size() due to atomicity
+
     while(true) {
-        in("async_send", var Object msg, var Locality sender)@self
-        out("async_msg", msg)@self
+    	
+		// Note that below we do read_nb for non blocking 
+		// operations to check existence of requests but
+		// in those we use "var Object _tmp" to get localities
+		// and then use the in call inside the if to get the actual
+		// locality with "var Locality <var>"  
+		//
+    	// This is a non-ideal workaround because read_nb causes
+    	// a crash if we pass in "var Locality <var>" and the
+    	// the read is empty/false and we also cannot pass the 
+    	// Object-saved locality into the read
+    	//
+    	// Beacuse of this, technically we could have a request that we 
+    	// "read" and then we "in" a different request, however this
+    	// seems to be the only way to not crash on empty non-blocking
+    	// calls (that I know of) 
+
+        // Enqueue send requests
+        if(read_nb("async_send", var Object msg, var Object _tmp1)@self){
+            in("async_send", msg, val Locality sender)@self
+
+            in("send_q", var LinkedList<SendReq> sq)@self
+            sq.add(new SendReq(msg, sender))
+            out("send_q", sq)@self
+        }
+
+        // Enqueue recv requests
+        if(read_nb("async_recv", var Object _tmp2, var Object _tmp3)@self){
+            in("async_recv", val Locality receiver, var Object tag)@self
+
+            in("recv_q", var LinkedList<RecvReq> rq)@self
+            rq.add(new RecvReq(receiver, tag))
+            out("recv_q", rq)@self
+        }
+        
+        // Move msg from send queue -> buffer (if space) (Dequeue from send queue)
+        read("buffer_size", var Integer count)@self
+
+        if(count < capacity){
+            in("send_q", var LinkedList<SendReq> sq2)@self
+
+            if(!sq2.isEmpty()){
+                val SendReq req = sq2.poll()
+                out("send_q", sq2)@self
+                
+                in("msg_buffer", var LinkedList<SendReq> mq)@self
+                mq.add(req)
+                out("msg_buffer", mq)@self
+
+                in("buffer_size", count)@self
+                out("buffer_size", count + 1)@self
+                
+                val Locality senderLoc = req.sender
+    			out("async_send", "ack", req.msg)@senderLoc
+            }
+            else{
+                out("send_q", sq2)@self
+            }
+        }
+        
+        // Move msg from buffer -> recv (if msgs exists) (Dequeue from recv queue)
+        read("buffer_size", var Integer count2)@self
+
+        if(count2 > 0){
+            in("recv_q", var LinkedList<RecvReq> rq2)@self
+
+            if(!rq2.isEmpty()){
+        		
+                val RecvReq req2 = rq2.poll()
+                out("recv_q", rq2)@self
+                
+                in("msg_buffer", var LinkedList<SendReq> mq2)@self
+                var SendReq msg2 = mq2.poll()
+                out("msg_buffer", mq2)@self
+
+                in("buffer_size", count2)@self
+                out("buffer_size", count2 - 1)@self
+
+
+				val Locality recvLoc = req2.receiver
+				val Object finalMsg = msg2.msg
+                out("async_msg", req2.tag, finalMsg)@recvLoc
+            }
+            else{
+                out("recv_q", rq2)@self
+            }
+        }
     }
 }
+
 
 // Send to async channel (non-blocking); will add the send message request
 // into the tuple space of the channel node for immediate processing by
@@ -51,12 +150,29 @@ proc async_channel(String chanName){
 //              <msg> message to send via channel
 proc async_send(Locality ch, Object msg) {
     val Locality requester = getPhysical(self)
+    
     var Boolean isClosed = read_nb("chan_status", "closed")@ch
+    
     if(isClosed){
     	println("panic: send on closed channel " + ch)
+    	System.exit(-1)
     }
     else{
-    	out("async_send", msg, requester)@ch
+    	// Send the message only if it's the correct type
+    	read("msgType", val Object chanMsgType)@ch
+    	val Object sendMsgType = msg.getClass()
+    	if(
+    		(sendMsgType == chanMsgType)
+    		|| (chanMsgType == Object) // Anything is allowed on an Object-type channel
+    		|| (chanMsgType == Locality && (sendMsgType == klava.PhysicalLocality || sendMsgType == klava.LogicalLocality))		
+    	){
+	    	out("async_send", msg, requester)@ch
+	    	in("async_send", "ack", msg)@self
+    	}
+    	else{
+    		println("panic: wrong send type (" + sendMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
+    		System.exit(-1)
+    	}
     }
 }
 
@@ -73,6 +189,8 @@ proc async_send(Locality ch, Object msg) {
 //       where: <returnTag> Same return tag used to eval process
 //              <msg> will contain the received message
 proc async_recv(Locality ch, Object returnTag) {
+    val Locality requester = getPhysical(self)
+    
     val Boolean isClosed = read_nb("chan_status", "closed")@ch
     
     if(isClosed) {
@@ -89,8 +207,24 @@ proc async_recv(Locality ch, Object returnTag) {
         }
     }
     else {
-        in("async_msg", var Object msg)@ch
-        out(returnTag, msg)@self
+        out("async_recv", requester, returnTag)@ch
+    	in("async_msg", returnTag, var Object msg)@self
+        
+        read("msgType", val Object chanMsgType)@ch
+    	val Object recvMsgType = msg.getClass()
+    	if(
+    		(recvMsgType == chanMsgType)
+    		|| (chanMsgType == Object) // Anything is allowed on an Object-type channel
+    		|| (chanMsgType == Locality && (recvMsgType == klava.PhysicalLocality || recvMsgType == klava.LogicalLocality))		
+    	){
+    		out(returnTag, msg)@self
+    	}
+    	else{
+    		// This really shouldn't happen until something got corrupted
+    		// because we check the type before the _send
+    		println("panic: wrong recv type (" + recvMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
+    		System.exit(-1)
+    	}
     }
 }
 
@@ -100,7 +234,7 @@ proc async_close(Locality ch, Object returnTag) {
     
     if(alreadyClosed) {
         println("panic: close of closed channel")
-        out(returnTag, false)@self
+        System.exit(-1)
     }
     else {
         out("chan_status", "closed")@ch
@@ -114,23 +248,23 @@ proc async_close(Locality ch, Object returnTag) {
 // SYNCHRONOUS COMMUNICATION
 // ---------------------------------------------------------------------------
 
-// Create a sync channel; if the channel already exists in the channel
-// factories tuple space, this will return the existing channel Locality,
-// otherwise it will return the Locality of the newly created channel
+// Create a sync channel. Will return the Locality of the newly created 
+// channel.
 //
 // Usage:
 //
 // 1) eval this process
 //       where: <chanFactory> Locality of the ChannelFactory node
-//              <chanName> Name of the channel
+//              <msgType> Type of the channel such as Integer, Float, Boolean, etc. or Locality (to pass channel)
 //              <returnTag> Unique return tag to read channel Locality
 // 2) in(returnTag, var Locality <ch>)
 //       where: <returnTag> Same return tag used to eval process
 //              <ch> will be the Locality of the new channel
-proc sync_new(Locality chanFactory, String chanName, Object returnTag) {
+proc sync_new(Locality chanFactory, Object msgType, Object returnTag) {
     val Locality requester = getPhysical(self)
-    out("make_chan", "sync", chanName, requester)@chanFactory
-    in("new_chan", "sync", chanName, var Locality ch)@self
+    val String chCreateTime = LocalDateTime.now().toString()
+    out("make_chan", chCreateTime, "sync", -1, msgType, requester)@chanFactory
+    in("new_chan", chCreateTime, "sync", var Locality ch)@self
     out(returnTag, ch)@self
 }
 
@@ -143,9 +277,8 @@ proc sync_new(Locality chanFactory, String chanName, Object returnTag) {
 //
 // This process should NOT be evaluated directly by user, it is designed
 // for the channel factory, only
-proc sync_channel(String chanName){
-    println("[Ch " + chanName + "] SYNC Channel process started)")
-    // FIXME Incorporate close logic, eventually
+proc sync_channel(){
+    println("[Ch] SYNC Channel process started)")
     while(true) {
         in("sync_send", var Object msg, var Locality sender)@self
         in("sync_recv", var Locality receiver)@self
@@ -169,10 +302,24 @@ proc sync_send(Locality ch, Object msg) {
     var Boolean isClosed = read_nb("chan_status", "closed")@ch
     if(isClosed){
     	println("panic: send on closed channel " + ch)
+    	System.exit(-1)
     }
     else{
-	    out("sync_send", msg, sender)@ch
-	    in("sync_ack", msg, sender)@self
+    	// Send the message only if it's the correct type
+    	read("msgType", val Object chanMsgType)@ch
+    	val Object sendMsgType = msg.getClass()
+    	if(
+    		(sendMsgType == chanMsgType)
+    		|| (chanMsgType == Object) // Anything is allowed on an Object-type channel
+    		|| (chanMsgType == Locality && (sendMsgType == klava.PhysicalLocality || sendMsgType == klava.LogicalLocality))		
+    	){
+		    out("sync_send", msg, sender)@ch
+		    in("sync_ack", msg, sender)@self
+    	}
+    	else{
+    		println("panic: wrong send type (" + sendMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
+    		System.exit(-1)
+    	}
 	    
     }
 }
@@ -200,7 +347,24 @@ proc sync_recv(Locality ch, Object returnTag) {
     else {
         out("sync_recv", receiver)@ch
         in("sync_msg", var Object msg)@self
-        out(returnTag, msg)@self
+        
+        read("msgType", val Object chanMsgType)@ch
+    	val Object recvMsgType = msg.getClass()
+    	if(
+    		(recvMsgType == chanMsgType)
+    		|| (chanMsgType == Object) // Anything is allowed on an Object-type channel
+    		|| (chanMsgType == Locality && (recvMsgType == klava.PhysicalLocality || recvMsgType == klava.LogicalLocality))		
+    	){
+        	out(returnTag, msg)@self
+    	}
+    	else{
+    		// This really shouldn't happen until something got corrupted
+    		// because we check the type before the _send
+    		println("panic: wrong recv type (" + recvMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
+    		System.exit(-1)
+    	}
+    	
+
     }
 }
 
@@ -209,7 +373,7 @@ proc sync_close(Locality ch, Object returnTag) {
     
     if(alreadyClosed) {
         println("panic: close of closed channel")
-        out(returnTag, false)@self
+        System.exit(-1)
     }
     else {
         out("chan_status", "closed")@ch
@@ -218,71 +382,56 @@ proc sync_close(Locality ch, Object returnTag) {
     }
 }
 
+//node ChannelFactory physical "tcp-127.0.0.1:9998"{
+//	val remoteA = new PhysicalLocality
+//	accept(remoteA)
+//	val remoteB = new PhysicalLocality
+//	accept(remoteB)
+	
+
 // ---------------------------------------------------------------------------
 // CHANNEL FACTORY
 // To use the GoEncoding, you must add a ChannelFactory node to your
 // network (see below), and assign it a logical Locality
 // ---------------------------------------------------------------------------
 
-//node ChannelFactory logical "channel_factory"{
-//    println("[ChannelFactory] Initialized")
-//    
-//	// Main loop that listens for new channel requests
-//    while(true) {
-//        println("[ChannelFactory] Waiting for channel create requests...")
+// FIXME: We should really be able to made this import-able
+
+//	node ChannelFactory logical "channel_factory"{
+//	    println("[ChannelFactory] Initialized")
+//	    var Integer numChans = 0
+//	    
+//		// Main loop that listens for new channel requests
+//	    while(true) {
+//	        println("[ChannelFactory] Waiting for channel create requests...")
+//	
+//	        in("make_chan", var Object returnTag, var String chanType, var Integer capacity, var Object msgType, var Locality requester)@self
+//	        numChans++
+//	        println("[ChannelFactory] Request for channel of type chanType " + chanType)
 //
-//        in("make_chan", var String chanType, var String chanName, var Locality requester)@self
-//        println("[ChannelFactory] Request for channel: " + chanName + " (" + chanType + ")")
 //
-//        // Check if the channel already exists
-//        // Use Object for the Locality since we get a class error otherwise
-//        var String otherChanType = ""
-//        if(chanType == "async"){
-//            otherChanType = "sync"
-//        }
-//        else if(chanType == "sync"){
-//            otherChanType = "async"
-//        }
-//
-//		// read_nb errors if we don't use Object type so just use that for now 
-//        val Boolean exists = read_nb("chan_registered", chanType, chanName, var Object locObj)@self
-//        val Boolean existsOther = read_nb("chan_registered", otherChanType, chanName, var Object locObj)@self
-//
-//        if(existsOther) {
-//            println("[ChannelFactory] ERROR channel " + chanName + " already exists as " + otherChanType)
-//            
-//		  // Send to requester
-//            out("new_chan", chanType, chanName, null)@requester
-//        }
-//        else if (exists) {
-//            // Read from registry
-//            read_nb("chan_registered", chanType, chanName, var Locality existingChan)@self
-//            println("[ChannelFactory] Found existing channel: " + existingChan)
-//
-//            // Send to requester
-//            out("new_chan", chanType, chanName, existingChan)@requester
-//
-//        } else {
-//            println("[ChannelFactory] Creating new channel for: " + chanName)
 //            val Locality newChan = newloc()
 //
-//            // Evaluate channel process
+//            // Evaluate (kick off) channel process
 //            if(chanType == "async"){
-//                eval(new async_channel(chanName))@newChan
+//                eval(new async_channel(capacity))@newChan
 //            }
 //            else if(chanType == "sync"){
-//                eval(new sync_channel(chanName))@newChan
+//                eval(new sync_channel())@newChan
 //            }
+//            
+//            // Put channel capacity and message type in its tuple space, for easy read access
+//        	out("capacity", capacity)@newChan
+//            out("msgType", msgType)@newChan
 //
 //            // Store in registry
-//            out("chan_registered", chanType, chanName, newChan)@self
-//            println("[ChannelFactory] Stored channel in registry: (" + chanName + ", " + newChan + ")")
+//            out("chan_registered", numChans, chanType, capacity, msgType, newChan)@self
+//            println("[ChannelFactory] Stored channel in registry: (" + numChans + ": " + newChan + ")")
 //
 //            // Send to requester
-//            out("new_chan", chanType, chanName, newChan)@requester
-//        }
-//    }
-//
-//}
-
-
+//            out("new_chan", returnTag, chanType, newChan)@requester
+//		}
+//	
+//	}   
+     
+   

@@ -6,112 +6,77 @@ net TestSync physical "localhost:9999"{
 
 	node ChannelFactory logical "channel_factory"{
 	    println("[ChannelFactory] Initialized")
+	    var Integer numChans = 0
 	    
 		// Main loop that listens for new channel requests
 	    while(true) {
 	        println("[ChannelFactory] Waiting for channel create requests...")
 	
-	        in("make_chan", var String chanType, var String chanName, var Locality requester)@self
-	        println("[ChannelFactory] Request for channel: " + chanName + " (" + chanType + ")")
-	
-	        // Check if the channel already exists
-	        // Use Object for the Locality since we get a class error otherwise
-	        var String otherChanType = ""
-	        if(chanType == "async"){
-	            otherChanType = "sync"
-	        }
-	        else if(chanType == "sync"){
-	            otherChanType = "async"
-	        }
-	
-			// read_nb errors if we don't use Object type so just use that for now 
-	        val Boolean exists = read_nb("chan_registered", chanType, chanName, var Object locObj)@self
-	        val Boolean existsOther = read_nb("chan_registered", otherChanType, chanName, var Object locObj)@self
-	
-	        if(existsOther) {
-	            println("[ChannelFactory] ERROR channel " + chanName + " already exists as " + otherChanType)
-	            
-			  // Send to requester
-	            out("new_chan", chanType, chanName, null)@requester
-	        }
-	        else if (exists) {
-	            // Read from registry
-	            read_nb("chan_registered", chanType, chanName, var Locality existingChan)@self
-	            println("[ChannelFactory] Found existing channel: " + existingChan)
-	
-	            // Send to requester
-	            out("new_chan", chanType, chanName, existingChan)@requester
-	
-	        } else {
-	            println("[ChannelFactory] Creating new channel for: " + chanName)
-	            val Locality newChan = newloc()
-	
-	            // Evaluate channel process
-	            if(chanType == "async"){
-	                eval(new async_channel(chanName))@newChan
-	            }
-	            else if(chanType == "sync"){
-	                eval(new sync_channel(chanName))@newChan
-	            }
-	
-	            // Store in registry
-	            out("chan_registered", chanType, chanName, newChan)@self
-	            println("[ChannelFactory] Stored channel in registry: (" + chanName + ", " + newChan + ")")
-	
-	            // Send to requester
-	            out("new_chan", chanType, chanName, newChan)@requester
-	        }
-	    }
+	        in("make_chan", var Object returnTag, var String chanType, var Integer capacity, var Object msgType, var Locality requester)@self
+	        numChans++
+	        println("[ChannelFactory] Request for channel of type chanType " + chanType)
+
+
+            val Locality newChan = newloc()
+
+            // Evaluate (kick off) channel process
+            if(chanType == "async"){
+                eval(new async_channel(capacity))@newChan
+            }
+            else if(chanType == "sync"){
+                eval(new sync_channel())@newChan
+            }
+            
+            // Put channel capacity and message type in its tuple space, for easy read access
+        	out("capacity", capacity)@newChan
+            out("msgType", msgType)@newChan
+
+            // Store in registry
+            out("chan_registered", numChans, chanType, capacity, msgType, newChan)@self
+            println("[ChannelFactory] Stored channel in registry: (" + numChans + ": " + newChan + ")")
+
+            // Send to requester
+            out("new_chan", returnTag, chanType, newChan)@requester
+		}
 	
 	}   
-    
-	node NodeC {
-        val String chanName = "channelY"
-        val String returnTag = "asfljasf"
+     
+    node NodeA {
+        
+        val Locality returnTag = self
 
-        eval(new sync_new(channel_factory, chanName, returnTag))@self
+
+        println("[NodeA] Requesting channel... " )
+        eval(new sync_new(channel_factory, Integer, returnTag))@self
         in(returnTag, var Locality ch)@self
-        println("[NodeC] Got channel " + ch)
+        println("[NodeA] Got channel " + ch)
+        
+        out(ch)@node_b
+        out(ch)@node_c
+        
+    }
 
-        eval(new sync_new(channel_factory, chanName, returnTag))@self
-        in(returnTag, var Locality ch2)@self
-        println("[NodeC] Got channel " + ch2 + ", should be the same as above (" + (ch2==ch) + ")")
-
-
-//        eval(new async_new(channel_factory, chanName, returnTag))@self
-//        in(returnTag, var Locality ch3)@self
-//        println("[NodeC] Got channel " + ch3 + ", should be null")
-//
-
+    node NodeB logical "node_b"{
+    	in(var Locality ch)@self
+        println("[Node B] Got channel " + ch)
+        
         var msg = 1
+//        var msg = 1.24F // Float, wrong type
         eval(new sync_send(ch, msg))@self
-        println("[NodeC] Sent message " + msg)
-        
-        eval(new sync_close(ch, "sadfasdf"))@self
-        in("sadfasdf", var Boolean closeStatus2)@self
-        println("[NodeC] Close channel status " + closeStatus2)
-        
-        eval(new sync_close(ch, "XYZ"))@self
-        in("XYZ", var Boolean closeStatus3)@self
-        println("[NodeC] Close channel status " + closeStatus3)
-        
-        var msg2 = 2
-        eval(new sync_send(ch, msg2))@self // should panic
-    }
-
-    node NodeD {
-        val String chanName = "channelY"
-        val String returnTag = "DIFFERENTasfljasf"
-
-        eval(new sync_new(channel_factory, chanName, returnTag))@self
-        in(returnTag, var Locality ch)@self
-        println("[NodeD] Got channel " + ch)
-
-        eval(new sync_recv(ch, returnTag))@self
-        in(returnTag, var Object msg)@self
-        println("[NodeD] Got message " + msg)
+        println("[Node B] Sent message " + msg)
 
     }
+
+    node NodeC logical "node_c" {
+    	in(var Locality ch)@self
+        println("[Node C] Got channel " + ch)
+        
+        eval(new sync_recv(ch, self))@self
+        in(self, var Integer msg)@self
+        println("[Node C] Recv message " + msg)
+
+    }
+    
 
 
 }
