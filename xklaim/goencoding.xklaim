@@ -3,6 +3,7 @@ import java.util.LinkedList
 import java.time.LocalDateTime;
 import goencoding.SendReq
 import goencoding.RecvReq
+import goencoding.Panic
 
 // ---------------------------------------------------------------------------
 // ASYNCHRONOUS COMMUNICATION
@@ -154,8 +155,7 @@ proc async_send(Locality ch, Object msg) {
     var Boolean isClosed = read_nb("chan_status", "closed")@ch
     
     if(isClosed){
-    	println("panic: send on closed channel " + ch)
-    	System.exit(-1)
+        Panic.panic("send on closed channel " + ch)
     }
     else{
     	// Send the message only if it's the correct type
@@ -170,8 +170,7 @@ proc async_send(Locality ch, Object msg) {
 	    	in("async_send", "ack", msg)@self
     	}
     	else{
-    		println("panic: wrong send type (" + sendMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
-    		System.exit(-1)
+        	Panic.panic("wrong send type (" + sendMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
     	}
     }
 }
@@ -222,8 +221,7 @@ proc async_recv(Locality ch, Object returnTag) {
     	else{
     		// This really shouldn't happen until something got corrupted
     		// because we check the type before the _send
-    		println("panic: wrong recv type (" + recvMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
-    		System.exit(-1)
+        	Panic.panic("wrong recv type (" + recvMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
     	}
     }
 }
@@ -233,8 +231,7 @@ proc async_close(Locality ch, Object returnTag) {
     val Boolean alreadyClosed = read_nb("chan_status", "closed")@ch
     
     if(alreadyClosed) {
-        println("panic: close of closed channel")
-        System.exit(-1)
+        Panic.panic("close of closed channel")
     }
     else {
         out("chan_status", "closed")@ch
@@ -301,8 +298,7 @@ proc sync_send(Locality ch, Object msg) {
 	val Locality sender = getPhysical(self)
     var Boolean isClosed = read_nb("chan_status", "closed")@ch
     if(isClosed){
-    	println("panic: send on closed channel " + ch)
-    	System.exit(-1)
+        Panic.panic("send on closed channel " + ch)
     }
     else{
     	// Send the message only if it's the correct type
@@ -317,8 +313,7 @@ proc sync_send(Locality ch, Object msg) {
 		    in("sync_ack", msg, sender)@self
     	}
     	else{
-    		println("panic: wrong send type (" + sendMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
-    		System.exit(-1)
+        	Panic.panic("wrong send type (" + sendMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
     	}
 	    
     }
@@ -360,8 +355,7 @@ proc sync_recv(Locality ch, Object returnTag) {
     	else{
     		// This really shouldn't happen until something got corrupted
     		// because we check the type before the _send
-    		println("panic: wrong recv type (" + recvMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
-    		System.exit(-1)
+        	Panic.panic("wrong recv type (" + recvMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
     	}
     	
 
@@ -372,8 +366,7 @@ proc sync_close(Locality ch, Object returnTag) {
     val Boolean alreadyClosed = read_nb("chan_status", "closed")@ch
     
     if(alreadyClosed) {
-        println("panic: close of closed channel")
-        System.exit(-1)
+        Panic.panic("close of closed channel")
     }
     else {
         out("chan_status", "closed")@ch

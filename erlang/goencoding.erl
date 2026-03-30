@@ -73,6 +73,7 @@ sync_channel_loop(ChannelState, Closed, TypeCheck) ->
                         Closed ->
                             %% Receive on closed channel with no sender
                             RecvPid ! closed,
+                            
                             sync_channel_loop(none, Closed, TypeCheck);
                         true ->
                             %% No sender waiting, receiver blocks
