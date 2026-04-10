@@ -1,0 +1,95 @@
+package goencodingtest
+
+import goencoding.*
+
+net TestSync physical "localhost:9999"{
+
+	node ChannelFactory logical "channel_factory"{
+	    println("[ChannelFactory] Initialized")
+	    var Integer numChans = 0
+	    
+		// Main loop that listens for new channel requests
+	    while(true) {
+	        println("[ChannelFactory] Waiting for channel create requests...")
+	
+	        in("make_chan", var Object returnTag, var String chanType, var Integer capacity, var Object msgType, var Locality requester)@self
+	        numChans++
+	        println("[ChannelFactory] Request for channel of type chanType " + chanType)
+
+
+            val Locality newChan = newloc()
+
+            // Evaluate (kick off) channel process
+            if(chanType == "async"){
+                eval(new async_channel(capacity))@newChan
+            }
+            else if(chanType == "sync"){
+                eval(new sync_channel())@newChan
+            }
+            
+            // Put channel capacity and message type in its tuple space, for easy read access
+        	out("capacity", capacity)@newChan
+            out("msgType", msgType)@newChan
+
+            // Store in registry
+            out("chan_registered", numChans, chanType, capacity, msgType, newChan)@self
+            println("[ChannelFactory] Stored channel in registry: (" + numChans + ": " + newChan + ")")
+
+            // Send to requester
+            out("new_chan", returnTag, chanType, newChan)@requester
+		}
+	
+	}   
+     
+    node NodeA {
+        
+        val Locality returnTag = self
+
+
+        println("[NodeA] Requesting channel... " )
+        eval(new async_new(channel_factory, 2, Integer, returnTag))@self //TODO: check type
+        in(returnTag, var Locality ch)@self
+        println("[NodeA] Got channel " + ch)
+        
+        out(ch)@node_b
+        out(ch)@node_c
+        
+    }
+
+    node NodeB logical "node_b"{
+    	in(var Locality ch)@self
+        println("[Node B] Got channel " + ch)
+
+        val Locality returnTag = self
+
+
+        println("[NodeB] Requesting channel... " )
+        eval(new sync_new(channel_factory, Integer, returnTag))@self
+        in(returnTag, var Locality ch2)@self
+        println("[NodeB] Got channel " + ch2)
+        
+        eval(new async_send(ch, ch2))@self
+        println("[Node B] Sent channel " + ch2)
+
+        eval(new sync_recv(ch2, self))@self
+        in(self, var Integer msg)@self
+        println("[Node B] Received message " + msg + " on channel " + ch2)
+
+    }
+
+    node NodeC logical "node_c" {
+    	in(var Locality ch)@self
+        println("[Node C] Got channel " + ch)
+        
+        eval(new async_recv(ch, self))@self
+        in(self, var Integer ch2)@self //TODO check type
+        println("[Node C] Recv channel " + ch2)
+
+        var msg = 1
+        eval(new sync_send(ch2, msg))@self
+        println("[Node C] Sent message " + msg + " on channel " + ch2)
+    }
+    
+
+
+}
