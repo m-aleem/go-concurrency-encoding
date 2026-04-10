@@ -134,19 +134,47 @@ func test_close_closed() {
 
 }
 
-// func test_close_receiver() {
-// 	var ch <-chan int
-// 	close(ch)
-// }
+func test_async_receiver_closed() {
+	ch := make(chan int, 2) // buffered channel
+	var wg sync.WaitGroup
+
+	wg.Add(2)
+
+	fmt.Println("[close] Spawned async sender goroutine...")
+	go func() {
+		defer wg.Done()
+		// Send messages to buffer
+		ch <- 10
+		ch <- 20
+		fmt.Println("[close] Sender: sent 10 and 20 to buffer, now closing channel")
+		close(ch)
+	}()
+
+	fmt.Println("[close] Spawned async receiver goroutine...")
+	go func() {
+		defer wg.Done()
+		// Receive messages
+		for {
+			val, ok := <-ch
+			if !ok {
+				fmt.Printf("[close] Receiver: channel closed, received zero value: %d\n", val)
+				break
+			}
+			fmt.Printf("[close] Receiver got: %d\n", val)
+		}
+	}()
+
+	wg.Wait()
+}
 
 // ---------------------------------------------------------------------------
 // MAIN
 // ---------------------------------------------------------------------------
 
 func test_close_main() {
-	fmt.Println("--- Close ---")
+	fmt.Println("\n--- Close tests ---")
 
-	fmt.Println("\n------ Close 1: Send on a closed sync channel ------")
+	fmt.Println("------ Close 1: Send on a closed sync channel ------")
 	test_sync_send_closed()
 
 	fmt.Println("\n------ Close 2: Send on a closed async channel ------")
@@ -155,9 +183,12 @@ func test_close_main() {
 	fmt.Println("\n------ Close 3: Close a closed channel ------")
 	test_close_closed()
 
-	fmt.Println("\n------ Close 4: Close a receive-only channel ------")
-	// test_close_receiver()
-	fmt.Println("Fails to compile: cannot close receive-only channel")
+	fmt.Println("\n------ Close 4: Receive from a closed async channel ------")
+	test_async_receiver_closed()
 
-	fmt.Println("--- End Close --\n")
+	// fmt.Println("\n------ Close 4: Close a receive-only channel ------")
+	// test_close_receiver()
+	// fmt.Println("Fails to compile: cannot close receive-only channel")
+
+	fmt.Println("--- End Close tests ---")
 }

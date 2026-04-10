@@ -18,7 +18,7 @@ import (
 func test_async_sender(ch chan int, msgs int) {
 	for i := 0; i < msgs; i++ {
 		ch <- i // does not block if buffer has space
-		fmt.Printf("[async: single sender] Sender sent: %d\n", i)
+		//fmt.Printf("[async: single sender] Sender sent: %d\n", i)
 	}
 	close(ch) // signal "no more values"
 }
@@ -97,8 +97,12 @@ func test_async_multiple_blocked_senders() {
 // ---------------------------------------------------------------------------
 
 func test_async_main() {
-	fmt.Println("--- Asynchronous ---")
+	fmt.Println("\n--- Asynchronous tests ---")
+
+	fmt.Println("------ Async 1: Send on an open channel (one sender, one receiver) ------")
 	test_async()
+
+	fmt.Println("\n------ Async 2: Send on an open channel (multiple senders, one receiver) ------")
 	test_async_multiple_blocked_senders()
-	fmt.Println("--- End Asynchronous --\n")
+	fmt.Println("--- End Asynchronous tests ---")
 }

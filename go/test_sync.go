@@ -56,7 +56,10 @@ func test_sync() {
 // ---------------------------------------------------------------------------
 
 func test_sync_main() {
-	fmt.Println("--- Synchronous ---")
+	fmt.Println("\n--- Synchronous tests ---")
+	fmt.Println("------ Sync 1: Send on an open channel (one sender, one receiver) ------")
 	test_sync()
-	fmt.Println("--- End Synchronous --\n")
+	fmt.Println("\n------ Sync 2: Send on an open channel (multiple senders, one receiver) TODO ------")
+
+	fmt.Println("--- End Synchronous tests ---")
 }

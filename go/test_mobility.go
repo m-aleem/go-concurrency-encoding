@@ -110,13 +110,13 @@ func test_mobility_async() {
 // ---------------------------------------------------------------------------
 
 func test_mobility_main() {
-	fmt.Println("--- Mobility ---")
+	fmt.Println("\n--- Mobility ---")
 
-	fmt.Println("\n------ Mobility 1: Synchronous ------")
+	fmt.Println("------ Mobility 1: Synchronous ------")
 	test_mobility_sync()
 
 	fmt.Println("\n------ Mobility 2: Asynchronous ------")
 	test_mobility_async()
 
-	fmt.Println("--- End Mobility --\n")
+	fmt.Println("--- End Mobility ---")
 }
