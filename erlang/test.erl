@@ -9,7 +9,7 @@ main() ->
     io:format("4: Close Test~n"),
     io:format("5: Typing Test~n"),
     io:format("6: All Tests~n"),
-    io:format("Enter choice (e.g., 1, 23, 4): "),
+    io:format("Enter choice (e.g., 1, 2, 3, 4, 5, 6): "),
 
     InputRaw = io:get_line(""),
     Input = string:trim(InputRaw, both),
@@ -30,10 +30,7 @@ main() ->
                     run_if_selected(Input, $2, test_async),
                     run_if_selected(Input, $3, test_mobility),
                     run_if_selected(Input, $4, test_close),
-                    run_if_selected(Input, $5, test_typing),
-                    run_if_selected(Input, $6, test_all)
-
-                
+                    run_if_selected(Input, $5, test_typing)                
             end
     end.
 

@@ -102,12 +102,12 @@ test_mobility_async() ->
 %% ---------------------------------------------------------------------------
 
 main() ->
-    io:format("--- Mobility ---~n"),
+    io:format("~n--- Mobility ---~n"),
 
-    io:format("~n------ Mobility 1: Synchronous ------~n"),
+    io:format("------ Mobility 1: Synchronous ------~n"),
     test_mobility_sync(),
 
     io:format("~n------ Mobility 2: Asynchronous ------~n"),
     test_mobility_async(),
 
-    io:format("--- End Mobility ---~n~n").
+    io:format("--- End Mobility ---~n").

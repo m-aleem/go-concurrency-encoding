@@ -338,7 +338,9 @@ async_channel_loop(Buffer, Capacity, WaitingReceivers, WaitingSenders, Closed, T
                     CloserPid ! ok,
                     async_channel_loop(Buffer, Capacity, queue:new(), queue:new(), true, TypeCheck)
             end
-    end.%% async_send(ChannelPid, Msg) -> ok
+    end.
+
+%% async_send(ChannelPid, Msg) -> ok
 %% Sends a message on the buffered channel (like Go's ch <- msg)
 %% Does not block if buffer has space; blocks if buffer is full
 %% Raises panic if channel is closed

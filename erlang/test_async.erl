@@ -18,14 +18,15 @@ test_async_sender(Ch, Msgs, I) when I < Msgs ->
     goencoding:async_send(Ch, I), % does not block if buffer has space
     io:format("[async] Sender sent: ~p~n", [I]),
     test_async_sender(Ch, Msgs, I + 1);
+
 test_async_sender(Ch, _Msgs, _I) ->
     goencoding:async_close(Ch). % signal "no more values"
 
 test_async_receiver(Ch) ->
     case goencoding:async_recv(Ch) of % loops until channel is closed
         {ok, Msg} ->
+            timer:sleep(100), % simulate slow processing
             io:format("[async] Receiver got: ~p~n", [Msg]),
-            timer:sleep(200), % simulate slow processing
             test_async_receiver(Ch);
         closed ->
             io:format("[async] Receiver: channel closed, no more messages, done receiving~n")
@@ -53,11 +54,50 @@ test_async() ->
     receive {done, receiver} -> ok end,
     receive {done, sender} -> ok end.
 
+
+test_async_multiple_blocked_senders() ->
+    Ch = goencoding:async_new(2), % buffered channel with capacity 2
+    Parent = self(),
+
+    % Fill the buffer to block senders
+    goencoding:async_send(Ch, 1),
+    goencoding:async_send(Ch, 2),
+    io:format("[async: multi-sender] Buffer filled with [1, 2]~n"),
+
+    io:format("[async] Spawned receiver goroutine...~n"),
+    spawn(fun() ->
+        test_async_receiver(Ch),
+        Parent ! {done, receiver}
+    end),
+
+    timer:sleep(100), % Ensure receiver is ready before sender starts
+
+    io:format("[async] Spawned sender goroutine...~n"),
+    spawn(fun() ->
+        goencoding:async_send(Ch, 3),
+        goencoding:async_send(Ch, 4),
+        goencoding:async_send(Ch, 5),
+        goencoding:async_close(Ch), % signal "no more values"
+        Parent ! {done, sender}
+    end),
+
+    % Wait for both to complete
+    receive {done, receiver} -> ok end,
+    receive {done, sender} -> ok end.
+
+
 %% ---------------------------------------------------------------------------
 %% MAIN
 %% ---------------------------------------------------------------------------
 
 main() ->
-    io:format("--- Asynchronous ---~n"),
+    io:format("~n--- Asynchronous tests ---~n"),
+
+    io:format("------ Async 1: Send on an open channel (one sender, one receiver) ------~n"),
     test_async(),
-    io:format("--- End Asynchronous ---~n~n").
+	
+    io:format("~n------ Async 2: Send on an open channel (multiple senders, one receiver) ------~n"),
+    test_async_multiple_blocked_senders(),
+
+	io:format("--- End Asynchronous tests ---~n").
+
