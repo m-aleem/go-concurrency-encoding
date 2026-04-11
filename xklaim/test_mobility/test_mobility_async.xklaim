@@ -47,7 +47,7 @@ net TestSync physical "localhost:9999"{
 
 
         println("[NodeA] Requesting channel... " )
-        eval(new async_new(channel_factory, 2, Integer, returnTag))@self //TODO: check type
+        eval(new sync_new(channel_factory, Integer, returnTag))@self //TODO: check type
         in(returnTag, var Locality ch)@self
         println("[NodeA] Got channel " + ch)
         
@@ -64,14 +64,14 @@ net TestSync physical "localhost:9999"{
 
 
         println("[NodeB] Requesting channel... " )
-        eval(new sync_new(channel_factory, Integer, returnTag))@self
+        eval(new async_new(channel_factory, 2, Integer, returnTag))@self
         in(returnTag, var Locality ch2)@self
         println("[NodeB] Got channel " + ch2)
         
-        eval(new async_send(ch, ch2))@self
+        eval(new sync_send(ch, ch2))@self
         println("[Node B] Sent channel " + ch2)
 
-        eval(new sync_recv(ch2, self))@self
+        eval(new async_recv(ch2, self))@self
         in(self, var Integer msg)@self
         println("[Node B] Received message " + msg + " on channel " + ch2)
 
@@ -81,12 +81,12 @@ net TestSync physical "localhost:9999"{
     	in(var Locality ch)@self
         println("[Node C] Got channel " + ch)
         
-        eval(new async_recv(ch, self))@self
+        eval(new sync_recv(ch, self))@self
         in(self, var Integer ch2)@self //TODO check type
         println("[Node C] Recv channel " + ch2)
 
         var msg = 1
-        eval(new sync_send(ch2, msg))@self
+        eval(new async_send(ch2, msg))@self
         println("[Node C] Sent message " + msg + " on channel " + ch2)
     }
     

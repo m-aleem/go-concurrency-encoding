@@ -47,47 +47,21 @@ net TestAsync physical "tcp-127.0.0.1:9999"{
 
 
         println("[NodeA] Requesting channel... " )
-        eval(new async_new(channel_factory, 2, Integer, returnTag))@self
+        eval(new async_new(channel_factory, 3, Integer, returnTag))@self
         in(returnTag, var Locality ch)@self
         println("[NodeA] Got channel " + ch)
-
-        eval(new async_send(ch, 1))@self
-        eval(new async_send(ch, 1))@self
-
-        println("[NodeA] Buffer filled with [1, 2]")
         
-        out(ch)@node_b1
-        out(ch)@node_b2
-        out(ch)@node_b3
+        out(ch)@node_b
         out(ch)@node_c
         
     }
 
-    node NodeB1 logical "node_b1"{
+    node NodeB logical "node_b"{
     	in(var Locality ch)@self
-        println("[Node B1] Got channel " + ch)
+        println("[Node B] Got channel " + ch)
         
-        println("[NodeB1] Sender 1 trying to send...")
-	    eval(new async_send(ch, 1))@self
-        println("[NodeB1] Sender 1 completed send")
-    }
+        eval(new async_send(ch, 1))@self
 
-    node NodeB2 logical "node_b2"{
-    	in(var Locality ch)@self
-        println("[Node B2] Got channel " + ch)
-        
-        println("[NodeB2] Sender 2 trying to send...")
-	    eval(new async_send(ch, 2))@self
-        println("[NodeB2] Sender 2 completed send")
-    }
-
-    node NodeB3 logical "node_b3"{
-    	in(var Locality ch)@self
-        println("[Node B3] Got channel " + ch)
-        
-        println("[NodeB3] Sender 3 trying to send...")
-	    eval(new async_send(ch, 3))@self
-        println("[NodeB3] Sender 3 completed send")
     }
 
     node NodeC logical "node_c" {
@@ -96,19 +70,7 @@ net TestAsync physical "tcp-127.0.0.1:9999"{
         
         eval(new async_recv(ch, self))@self
         in(self, var Integer msg)@self
-        println("[Node C] Recv message " + msg)
-        eval(new async_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Recv message " + msg)
-        eval(new async_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Recv message " + msg)
-        eval(new async_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Recv message " + msg)
-        eval(new async_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Recv message " + msg)
+        println("[Node C] Receiver got right type: " + msg)
+
     }
-    
 }

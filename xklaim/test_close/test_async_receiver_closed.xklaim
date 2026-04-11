@@ -47,7 +47,7 @@ net TestSync physical "localhost:9999"{
 
 
         println("[NodeA] Requesting channel... " )
-        eval(new async_new(channel_factory, 1, Integer, returnTag))@self
+        eval(new async_new(channel_factory, 2, Integer, returnTag))@self
         in(returnTag, var Locality ch)@self
         println("[NodeA] Got channel " + ch)
         
@@ -63,38 +63,14 @@ node NodeB logical "node_b"{
         eval(new async_recv(ch, self))@self
         in(self, var Integer msg)@self
         println("[Node B] Recv message " + msg)
-        if(msg == 1) { //TODO: check
-            eval(new async_close(ch, self))@self
-            println("[Node B] async Receiver: about to close channel, will cause sender panic...")
-        }
+        
         eval(new async_recv(ch, self))@self
         in(self, var Integer msg)@self
         println("[Node B] Recv message " + msg)
-        if(msg == 1) { //TODO: check
-            eval(new async_close(ch, self))@self
-            println("[Node B] async Receiver: about to close channel, will cause sender panic...")
-        }
+
         eval(new async_recv(ch, self))@self
         in(self, var Integer msg)@self
         println("[Node B] Recv message " + msg)
-        if(msg == 1) { //TODO: check
-            eval(new async_close(ch, self))@self
-            println("[Node B] async Receiver: about to close channel, will cause sender panic...")
-        }
-        eval(new async_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node B] Recv message " + msg)
-        if(msg == 1) { //TODO: check
-            eval(new async_close(ch, self))@self
-            println("[Node B] async Receiver: about to close channel, will cause sender panic...")
-        }
-        eval(new async_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node B] Recv message " + msg)
-        if(msg == 1) { //TODO: check
-            eval(new async_close(ch, self))@self
-            println("[Node B] async Receiver: about to close channel, will cause sender panic...")
-        }
     }
 
     node NodeC logical "node_c" {
@@ -104,8 +80,6 @@ node NodeB logical "node_b"{
 
         eval(new async_send(ch, 0))@self
         eval(new async_send(ch, 1))@self
-        eval(new async_send(ch, 2))@self
-        eval(new async_send(ch, 3))@self
-        eval(new async_send(ch, 4))@self
+        eval(new async_close(ch, self))@self
     }
 }

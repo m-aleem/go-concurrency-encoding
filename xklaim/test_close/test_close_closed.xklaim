@@ -52,7 +52,6 @@ net TestSync physical "localhost:9999"{
         println("[NodeA] Got channel " + ch)
         
         out(ch)@node_b
-        out(ch)@node_c
         
     }
 
@@ -60,22 +59,10 @@ net TestSync physical "localhost:9999"{
     	in(var Locality ch)@self
         println("[Node B] Got channel " + ch)
         
-        var msg = 1
-        eval(new sync_send(ch, msg))@self
-        println("[Node B] Sent message " + msg)
+        println("[Node B] Close channel first time")
+        eval(new sync_close(ch, self))@self
 
+        println("[Node B] Close channel second time")
+        eval(new sync_close(ch, self))@self
     }
-
-    node NodeC logical "node_c" {
-    	in(var Locality ch)@self
-        println("[Node C] Got channel " + ch)
-        
-        eval(new sync_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Recv message " + msg)
-
-    }
-    
-
-
 }
