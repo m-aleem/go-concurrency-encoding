@@ -2,7 +2,7 @@ package goencodingtest
 
 import goencoding.*
 
-net TestSync physical "localhost:9999"{
+net TestCloseClosed physical "localhost:9999"{
 
 	node ChannelFactory logical "channel_factory"{
 	    println("[ChannelFactory] Initialized")

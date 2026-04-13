@@ -2,7 +2,7 @@ package goencodingtest
 
 import goencoding.*
 
-net TestSync physical "localhost:9999"{
+net TestSyncAnyType physical "localhost:9999"{
 
 	node ChannelFactory logical "channel_factory"{
 	    println("[ChannelFactory] Initialized")
@@ -61,17 +61,17 @@ net TestSync physical "localhost:9999"{
         println("[Node B] Got channel " + ch)
         
         
-        var msg = 1.24F // Float
-        eval(new sync_send(ch, msg))@self
-        println("[Node B] Sent message " + msg)
+        var msg1 = 1.24F // Float
+        eval(new sync_send(ch, msg1))@self
+        println("[Node B] Sent message " + msg1)
 
-        var msg = 1 // Int
-        eval(new sync_send(ch, msg))@self
-        println("[Node B] Sent message " + msg)
+        var msg2 = 1 // Int
+        eval(new sync_send(ch, msg2))@self
+        println("[Node B] Sent message " + msg2)
 
-        var msg = "test" // String
-        eval(new sync_send(ch, msg))@self
-        println("[Node B] Sent message " + msg)
+        var msg3 = "test" // String
+        eval(new sync_send(ch, msg3))@self
+        println("[Node B] Sent message " + msg3)
 
     }
 
@@ -80,16 +80,16 @@ net TestSync physical "localhost:9999"{
         println("[Node C] Got channel " + ch)
         
         eval(new sync_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Receiver got: " + msg)
+        in(self, var Integer msg1)@self
+        println("[Node C] Receiver got: " + msg1)
 
         eval(new sync_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Receiver got: " + msg)
+        in(self, var Integer msg2)@self
+        println("[Node C] Receiver got: " + msg2)
 
         eval(new sync_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Receiver got: " + msg)
+        in(self, var Integer msg3)@self
+        println("[Node C] Receiver got: " + msg3)
 
     }
     

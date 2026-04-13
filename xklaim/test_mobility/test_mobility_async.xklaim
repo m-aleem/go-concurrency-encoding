@@ -2,7 +2,7 @@ package goencodingtest
 
 import goencoding.*
 
-net TestSync physical "localhost:9999"{
+net TestAsyncMobility physical "localhost:9999"{
 
 	node ChannelFactory logical "channel_factory"{
 	    println("[ChannelFactory] Initialized")
@@ -47,7 +47,7 @@ net TestSync physical "localhost:9999"{
 
 
         println("[NodeA] Requesting channel... " )
-        eval(new sync_new(channel_factory, Integer, returnTag))@self //TODO: check type
+        eval(new sync_new(channel_factory, Locality, returnTag))@self //TODO: check type
         in(returnTag, var Locality ch)@self
         println("[NodeA] Got channel " + ch)
         
@@ -82,7 +82,7 @@ net TestSync physical "localhost:9999"{
         println("[Node C] Got channel " + ch)
         
         eval(new sync_recv(ch, self))@self
-        in(self, var Integer ch2)@self //TODO check type
+        in(self, var Locality ch2)@self //TODO check type
         println("[Node C] Recv channel " + ch2)
 
         var msg = 1

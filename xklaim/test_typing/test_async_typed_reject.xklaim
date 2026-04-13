@@ -2,7 +2,7 @@ package goencodingtest
 
 import goencoding.*
 
-net TestAsync physical "tcp-127.0.0.1:9999"{
+net TestAsyncTypeReject physical "localhost:9999"{
 
 	node ChannelFactory logical "channel_factory"{
 	    println("[ChannelFactory] Initialized")

@@ -2,7 +2,7 @@ package goencodingtest
 
 import goencoding.*
 
-net TestAsync physical "tcp-127.0.0.1:9999"{
+net TestAsync physical "localhost:9999"{
 
 	node ChannelFactory logical "channel_factory"{
 	    println("[ChannelFactory] Initialized")
@@ -73,24 +73,24 @@ net TestAsync physical "tcp-127.0.0.1:9999"{
         println("[Node C] Got channel " + ch)
         
         eval(new async_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Recv message " + msg)
+        in(self, var Integer msg1)@self
+        println("[Node C] Recv message " + msg1)
 
         eval(new async_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Recv message " + msg)
+        in(self, var Integer msg2)@self
+        println("[Node C] Recv message " + msg2)
 
         eval(new async_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Recv message " + msg)
+        in(self, var Integer msg3)@self
+        println("[Node C] Recv message " + msg3)
 
         eval(new async_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Recv message " + msg)
+        in(self, var Integer msg4)@self
+        println("[Node C] Recv message " + msg4)
 
         eval(new async_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Recv message " + msg)
+        in(self, var Integer msg5)@self
+        println("[Node C] Recv message " + msg5)
 
     }
 }
