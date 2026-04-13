@@ -102,10 +102,15 @@ net TestSyncSendClosed physical "localhost:9999"{
         println("[Node C] Got channel " + ch)
         
 
-        eval(new sync_send(ch, 0))@self
-        eval(new sync_send(ch, 1))@self
-        eval(new sync_send(ch, 2))@self
-        eval(new sync_send(ch, 3))@self
+        var Integer msg1 = 0
+        eval(new sync_send(ch, msg1))@self
+        var Integer msg2 = 1
+        eval(new sync_send(ch, msg2))@self
+        var Integer msg3 = 2
+        eval(new sync_send(ch, msg3))@self
+        var Integer msg4 = 3
+        eval(new sync_send(ch, msg4))@self
+        var Integer msg5 = 4
         eval(new sync_send(ch, 4))@self
     }
 }
