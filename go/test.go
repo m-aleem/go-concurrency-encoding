@@ -4,8 +4,17 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 )
+
+// Helper function to run go test with a pattern
+func runGoTest(pattern string) error {
+	cmd := exec.Command("go", "test", "-v", "-run", pattern, ".")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
 
 func main() {
 	fmt.Println("=== Enter Test(s) to Run ===")
@@ -35,28 +44,34 @@ func main() {
 
 	// If "6" (All) is chosen, run all tests
 	if runTests["6"] {
-		test_sync_main()
-		test_async_main()
-		test_mobility_main()
-		test_close_main()
-		test_typing_main()
+		fmt.Println("=== Running ALL Tests ===")
+		runGoTest("TestSync")     // runs all tests with "TestSync" in their name
+		runGoTest("TestAsync")    // runs all tests with "TestAsync" in their name
+		runGoTest("TestMobility") // runs all tests with "TestMobility" in their name
+		runGoTest("TestClose")    // runs all tests with "TestClose" in their name
+		runGoTest("TestTyped")    // runs all tests with "TestTyped"  in their name
 		return
 	}
 
 	// Run selected tests
 	if runTests["1"] {
-		test_sync_main()
+		fmt.Println("=== Running Sync Tests ===")
+		runGoTest("TestSync")
 	}
 	if runTests["2"] {
-		test_async_main()
+		fmt.Println("=== Running Async Tests ===")
+		runGoTest("TestAsync")
 	}
 	if runTests["3"] {
-		test_mobility_main()
+		fmt.Println("=== Running Mobility Tests ===")
+		runGoTest("TestMobility")
 	}
 	if runTests["4"] {
-		test_close_main()
+		fmt.Println("=== Running Close Tests ===")
+		runGoTest("TestClose")
 	}
 	if runTests["5"] {
-		test_typing_main()
+		fmt.Println("=== Running Typing Tests ===")
+		runGoTest("TestTyped")
 	}
 }

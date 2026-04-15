@@ -1,9 +1,22 @@
 # go
 
-## Usage
+## Description
 
-FIXME: Add brief usage documentation here
+TODO
 
 ## Running tests
 
-1) `go run test_sync.go test_async.go test_mobility.go test_close.go test_typing.go test.go`
+Execute the following command:
+
+```terminal
+go run test.go
+```
+
+Then, select one of the following options:
+
+1. Sync Test
+2. Async Test
+3. Mobility Test
+4. Close (Panic) Test
+5. Typing Tests
+6. All Tests
