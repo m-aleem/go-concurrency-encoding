@@ -63,35 +63,35 @@ node NodeB logical "node_b"{
         eval(new async_recv(ch, self))@self
         in(self, var Integer msg1)@self
         println("[Node B] Recv message " + msg1)
-        if(msg1 == 1) { //TODO: check
+        if(msg1.equals(1)) { //TODO: check
             eval(new async_close(ch, self))@self
             println("[Node B] async Receiver: about to close channel, will cause sender panic...")
         }
         eval(new async_recv(ch, self))@self
         in(self, var Integer msg2)@self
         println("[Node B] Recv message " + msg2)
-        if(msg2 == 1) { //TODO: check
+        if(msg2.equals(1)) { //TODO: check
             eval(new async_close(ch, self))@self
             println("[Node B] async Receiver: about to close channel, will cause sender panic...")
         }
         eval(new async_recv(ch, self))@self
         in(self, var Integer msg3)@self
         println("[Node B] Recv message " + msg3)
-        if(msg3 == 1) { //TODO: check
+        if(msg3.equals(1)) { //TODO: check
             eval(new async_close(ch, self))@self
             println("[Node B] async Receiver: about to close channel, will cause sender panic...")
         }
         eval(new async_recv(ch, self))@self
         in(self, var Integer msg4)@self
         println("[Node B] Recv message " + msg4)
-        if(msg4 == 1) { //TODO: check
+        if(msg4.equals(1)) { //TODO: check
             eval(new async_close(ch, self))@self
             println("[Node B] async Receiver: about to close channel, will cause sender panic...")
         }
         eval(new async_recv(ch, self))@self
         in(self, var Integer msg5)@self
         println("[Node B] Recv message " + msg5)
-        if(msg5 == 1) { //TODO: check
+        if(msg5.equals(1)) { //TODO: check
             eval(new async_close(ch, self))@self
             println("[Node B] async Receiver: about to close channel, will cause sender panic...")
         }
