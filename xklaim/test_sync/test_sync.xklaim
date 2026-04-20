@@ -60,7 +60,7 @@ net TestSync physical "localhost:9999"{
     	in(var Locality ch)@self
         println("[Node B] Got channel " + ch)
         
-        var msg = 1
+        var msg = 0
         eval(new sync_send(ch, msg))@self
         println("[Node B] Sent message " + msg)
 

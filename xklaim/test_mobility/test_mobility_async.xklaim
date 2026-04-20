@@ -72,8 +72,16 @@ net TestAsyncMobility physical "localhost:9999"{
         println("[Node B] Sent channel " + ch2)
 
         eval(new async_recv(ch2, self))@self
-        in(self, var Integer msg)@self
-        println("[Node B] Received message " + msg + " on channel " + ch2)
+        in(self, var Integer msg1)@self
+        println("[Node B] Received message " + msg1 + " on channel " + ch2)
+
+        eval(new async_recv(ch2, self))@self
+        in(self, var Integer msg2)@self
+        println("[Node B] Received message " + msg2 + " on channel " + ch2)
+
+        eval(new async_recv(ch2, self))@self
+        in(self, var Integer msg3)@self
+        println("[Node B] Received message " + msg3 + " on channel " + ch2)
 
     }
 
@@ -85,9 +93,14 @@ net TestAsyncMobility physical "localhost:9999"{
         in(self, var Locality ch2)@self //TODO check type
         println("[Node C] Recv channel " + ch2)
 
-        var msg = 1
-        eval(new async_send(ch2, msg))@self
-        println("[Node C] Sent message " + msg + " on channel " + ch2)
+        eval(new async_send(ch2, 1))@self
+        println("[Node C] Sent message 1 on channel " + ch2)
+
+        eval(new async_send(ch2, 2))@self
+        println("[Node C] Sent message 2 on channel " + ch2)
+
+        eval(new async_send(ch2, 3))@self
+        println("[Node C] Sent message 3 on channel " + ch2)
     }
     
 

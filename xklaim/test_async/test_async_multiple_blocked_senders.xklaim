@@ -52,7 +52,7 @@ net TestAsyncMultipleSenders physical "localhost:9999"{
         println("[NodeA] Got channel " + ch)
 
         eval(new async_send(ch, 1))@self
-        eval(new async_send(ch, 1))@self
+        eval(new async_send(ch, 2))@self
 
         println("[NodeA] Buffer filled with [1, 2]")
         
@@ -68,7 +68,7 @@ net TestAsyncMultipleSenders physical "localhost:9999"{
         println("[Node B1] Got channel " + ch)
         
         println("[NodeB1] Sender 1 trying to send...")
-	    eval(new async_send(ch, 1))@self
+	    eval(new async_send(ch, 3))@self
         println("[NodeB1] Sender 1 completed send")
     }
 
@@ -77,7 +77,7 @@ net TestAsyncMultipleSenders physical "localhost:9999"{
         println("[Node B2] Got channel " + ch)
         
         println("[NodeB2] Sender 2 trying to send...")
-	    eval(new async_send(ch, 2))@self
+	    eval(new async_send(ch, 4))@self
         println("[NodeB2] Sender 2 completed send")
     }
 
@@ -86,7 +86,7 @@ net TestAsyncMultipleSenders physical "localhost:9999"{
         println("[Node B3] Got channel " + ch)
         
         println("[NodeB3] Sender 3 trying to send...")
-	    eval(new async_send(ch, 3))@self
+	    eval(new async_send(ch, 5))@self
         println("[NodeB3] Sender 3 completed send")
     }
 
