@@ -67,7 +67,7 @@ func TestTypedSyncChannelReject(t *testing.T) {
 // --- Test 3: Sync typed channel accepts any type ---
 // This test demonstrates that an untyped channel (chan any) can accept values of any type and the receiver receives the correct types and values.
 func TestTypedSyncChannelAcceptAny(t *testing.T) {
-	fmt.Println("------ Typing 3: Sync typed channel accepts any type ------")
+	fmt.Println("------ Typing 3: Sync untyped channel accepts any type ------")
 	expectedResult := []any{42, "hello"}
 	expectedType := []string{"int", "string"}
 
@@ -161,7 +161,7 @@ func TestTypedAsyncChannelReject(t *testing.T) {
 // --- Test 6: Async typed channel accepts any type ---
 // This test demonstrates that an untyped channel (chan any) can accept values of any type and the receiver receives the correct types and values.
 func TestTypedAsyncChannelAcceptAny(t *testing.T) {
-	fmt.Println("------ Typing 6: Async typed channel accepts any type ------")
+	fmt.Println("------ Typing 6: Async untyped channel accepts any type ------")
 	expectedResult := []any{42, "hello"}
 	expectedType := []string{"int", "string"}
 
