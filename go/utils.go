@@ -184,7 +184,7 @@ func sync_server(serverCh chan chan int, wg *sync.WaitGroup) chan int {
 	fmt.Println("[mobility-sync] Server: received a channel from a client")
 
 	// Server sends result back through the received channel
-	result := 42
+	result := 1
 	fmt.Printf("[mobility-sync] Server: sending result %d through received channel\n", result)
 	clientCh <- result
 
@@ -233,7 +233,7 @@ func async_server(serverCh chan chan int, wg *sync.WaitGroup) chan int {
 	fmt.Println("[mobility-async] Server: received a channel from a client")
 
 	// Server sends result back through the received channel
-	results := []int{99, 100, 101}
+	results := []int{1, 2, 3}
 
 	for _, result := range results {
 		fmt.Printf("[mobility-async] Server: sending result %d through received channel\n", result)

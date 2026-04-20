@@ -45,7 +45,7 @@ func TestCloseSyncChannelAndSend(t *testing.T) {
 	startSenders := func() {
 		defer wg.Done()
 		// Try to send more messages - will panic because channel is closed
-		sync_sender(ch, 5)
+		sync_sender(ch, 4)
 	}
 
 	assert_panic(t, startSenders, "[close]")

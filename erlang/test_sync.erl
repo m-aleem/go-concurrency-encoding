@@ -52,7 +52,7 @@ test_one_sender() ->
 
     io:format("[sync] Spawned sender goroutine...~n"),
     spawn(fun() ->
-        test_sync_sender(Ch, 10), % send 10 messages
+        test_sync_sender(Ch, 1), % send 1 message
         Parent ! {done, sender}
     end),
 

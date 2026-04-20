@@ -18,7 +18,7 @@ func TestMobilitySync(t *testing.T) {
 	fmt.Println("------ Mobility 1: Synchronous ------")
 
 	var result int
-	expectedResult := 42
+	expectedResult := 1
 
 	// Channel that carries channels! (synchronous)
 	serverCh := make(chan chan int)
@@ -45,7 +45,7 @@ func TestMobilityAsync(t *testing.T) {
 	fmt.Println("------ Mobility 2: Asynchronous ------")
 
 	gotResults := []int{}
-	expectedResult := []int{99, 100, 101}
+	expectedResult := []int{1, 2, 3}
 
 	// Channel that carries channels! (synchronous)
 	serverCh := make(chan chan int)

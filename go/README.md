@@ -1,9 +1,5 @@
 # go
 
-## Description
-
-TODO
-
 ## Running tests
 
 Execute the following command:

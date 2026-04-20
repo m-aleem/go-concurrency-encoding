@@ -19,7 +19,7 @@ test_close_sync_receiver(Ch) ->
     case goencoding:sync_recv(Ch) of % loops until channel is closed
         {ok, Msg} ->
             io:format("[close sync] Receiver got: ~p~n", [Msg]),
-            if Msg == 1 ->
+            if Msg == 0 ->
                 io:format("[close sync] Receiver: about to close channel, will cause sender panic...~n"),
                 goencoding:sync_close(Ch); % signal "no more values"
                true -> ok
@@ -44,7 +44,7 @@ test_close_sync() ->
 
     io:format("[close sync] Spawned sync sender goroutine...~n"),
     SenderPid = spawn_link(fun() ->
-        test_close_sync_sender(Ch, 5),
+        test_close_sync_sender(Ch, 4),
         Parent ! {done, sender}
     end),
 
@@ -73,7 +73,7 @@ test_close_async_receiver(Ch) ->
     case goencoding:async_recv(Ch) of % loops until channel is closed
         {ok, Msg} ->
             io:format("[close async] Receiver got: ~p~n", [Msg]),
-            if Msg == 1 ->
+            if Msg == 0 ->
                 io:format("[close async] Receiver: about to close channel, will cause sender panic...~n"),
                 goencoding:async_close(Ch);
                true -> ok
@@ -113,7 +113,7 @@ test_close_async() ->
 
 
 test_receive_closed_async() ->
-    Ch = goencoding:async_new(3),
+    Ch = goencoding:async_new(2),
     Parent = self(),
 
     spawn(fun() ->
@@ -123,8 +123,8 @@ test_receive_closed_async() ->
     end),
 
     timer:sleep(50),
-    goencoding:async_send(Ch, 1),
-    goencoding:async_send(Ch, 2),
+    goencoding:async_send(Ch, 10),
+    goencoding:async_send(Ch, 20),
     io:format("[receive closed async] Sender: about to close channel after sending values to buffered channel~n"),
     goencoding:async_close(Ch),
     receive {done, receiver} -> ok end.

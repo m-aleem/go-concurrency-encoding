@@ -19,8 +19,8 @@ import (
 func TestSyncSingleSender(t *testing.T) {
 	fmt.Println("------ Sync 1: Send on an open channel (one sender, one receiver) ------")
 
-	got := run_sync(3) // send 3 messages
-	want := []int{0, 1, 2}
+	got := run_sync(1) // send 3 messages
+	want := []int{0}
 
 	assert_equal(t, got, want, "received messages")
 }

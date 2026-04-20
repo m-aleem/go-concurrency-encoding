@@ -22,7 +22,7 @@ import (
 func TestAsyncSingleSender(t *testing.T) {
 	fmt.Println("------ Async 1: Send on an open channel (one sender, one receiver) ------")
 
-	got := run_async(2, 5) // send 5 messages (buffer is only 2)
+	got := run_async(3, 5) // send 5 messages (buffer is only 3)
 	want := []int{0, 1, 2, 3, 4}
 
 	assert_equal(t, got, want, "received messages")
