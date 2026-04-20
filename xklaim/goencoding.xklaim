@@ -203,7 +203,16 @@ proc async_recv(Locality ch, Object returnTag) {
         }
         else {
             // Channel closed and empty - return null
-            out(returnTag, null)@self
+            read("msgType", val Object chanMsgType)@ch
+            if(chanMsgType == Object)
+                out(returnTag, null)@self
+            if(chanMsgType == Integer)
+                out(returnTag, 0)@self
+            if(chanMsgType == Float)
+                out(returnTag, 0.0)@self
+            if(chanMsgType == String)
+                out(returnTag, "")@self
+
         }
     }
     else {
@@ -342,7 +351,15 @@ proc sync_recv(Locality ch, Object returnTag) {
     val Boolean isClosed = read_nb("chan_status", "closed")@ch
     
     if(isClosed) {
-        out(returnTag, null)@self
+            read("msgType", val Object chanMsgType)@ch
+            if(chanMsgType == Object)
+                out(returnTag, null)@self
+            if(chanMsgType == Integer)
+                out(returnTag, 0)@self
+            if(chanMsgType == Float)
+                out(returnTag, 0.0)@self
+            if(chanMsgType == String)
+                out(returnTag, "")@self
     }
     else {
         out("sync_recv", receiver)@ch
