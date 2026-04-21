@@ -71,6 +71,8 @@ net TestSyncMobility physical "localhost:9999"{
         eval(new sync_send(ch, ch2))@self
         println("[Node B] Sent channel " + ch2)
 
+        Thread.sleep(100)
+
         eval(new sync_recv(ch2, self))@self
         in(self, var Integer msg)@self
         println("[Node B] Received message " + msg + " on channel " + ch2)
@@ -84,6 +86,8 @@ net TestSyncMobility physical "localhost:9999"{
         eval(new sync_recv(ch, self))@self
         in(self, var Locality ch2)@self //TODO check type
         println("[Node C] Recv channel " + ch2)
+
+        Thread.sleep(100)
 
         var msg = 1
         eval(new sync_send(ch2, msg))@self

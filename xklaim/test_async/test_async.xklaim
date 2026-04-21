@@ -61,9 +61,13 @@ net TestAsync physical "localhost:9999"{
         println("[Node B] Got channel " + ch)
         
         eval(new async_send(ch, 1))@self
+        Thread.sleep(100)
         eval(new async_send(ch, 2))@self
+        Thread.sleep(100)
         eval(new async_send(ch, 3))@self
+        Thread.sleep(100)
         eval(new async_send(ch, 4))@self
+        Thread.sleep(100)
         eval(new async_send(ch, 5))@self
 
     }
@@ -71,6 +75,8 @@ net TestAsync physical "localhost:9999"{
     node NodeC logical "node_c" {
     	in(var Locality ch)@self
         println("[Node C] Got channel " + ch)
+
+        Thread.sleep(100)
         
         eval(new async_recv(ch, self))@self
         in(self, var Integer msg1)@self

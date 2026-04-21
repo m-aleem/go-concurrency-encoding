@@ -52,9 +52,13 @@ net TestSyncMultipleSenders physical "localhost:9999"{
         println("[NodeA] Got channel " + ch)
         
         out(ch)@node_b1
+        Thread.sleep(100)
         out(ch)@node_b2
+        Thread.sleep(100)
         out(ch)@node_b3
+        Thread.sleep(100)
         out(ch)@node_b4
+        Thread.sleep(100)
         out(ch)@node_c
         
     }

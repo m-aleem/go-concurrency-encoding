@@ -57,8 +57,11 @@ net TestAsyncMultipleSenders physical "localhost:9999"{
         println("[NodeA] Buffer filled with [1, 2]")
         
         out(ch)@node_b1
+        Thread.sleep(100)
         out(ch)@node_b2
+        Thread.sleep(100)
         out(ch)@node_b3
+        Thread.sleep(100)
         out(ch)@node_c
         
     }

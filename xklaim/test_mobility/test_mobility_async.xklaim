@@ -71,6 +71,8 @@ net TestAsyncMobility physical "localhost:9999"{
         eval(new sync_send(ch, ch2))@self
         println("[Node B] Sent channel " + ch2)
 
+        Thread.sleep(100)
+
         eval(new async_recv(ch2, self))@self
         in(self, var Integer msg1)@self
         println("[Node B] Received message " + msg1 + " on channel " + ch2)
@@ -93,11 +95,17 @@ net TestAsyncMobility physical "localhost:9999"{
         in(self, var Locality ch2)@self //TODO check type
         println("[Node C] Recv channel " + ch2)
 
+        Thread.sleep(100)
+
         eval(new async_send(ch2, 1))@self
         println("[Node C] Sent message 1 on channel " + ch2)
 
+        Thread.sleep(100)
+
         eval(new async_send(ch2, 2))@self
         println("[Node C] Sent message 2 on channel " + ch2)
+
+        Thread.sleep(100)
 
         eval(new async_send(ch2, 3))@self
         println("[Node C] Sent message 3 on channel " + ch2)
