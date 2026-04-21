@@ -11,7 +11,7 @@ import (
 // This test demonstrates that a typed channel only accepts values of the specified type and the receiver receives the correct type and value.
 func TestTypedSyncChannelAccept(t *testing.T) {
 	fmt.Println("------ Typing 1: Sync typed channel accepts correct type ------")
-	expectedResult := 1
+	expectedResult := 42
 	expectedType := fmt.Sprintf("%T", expectedResult)
 
 	var got any
@@ -38,7 +38,7 @@ func TestTypedSyncChannelAccept(t *testing.T) {
 	fmt.Println("[typing] Spawned sender goroutine...")
 	go func() {
 		defer wg.Done()
-		ch <- 1   // send correct type message
+		ch <- 42  // send correct type message
 		close(ch) // signal "no more values"
 	}()
 
@@ -112,8 +112,8 @@ func TestTypedSyncChannelAcceptAny(t *testing.T) {
 // This test demonstrates that a typed channel only accepts values of the specified type and the receiver receives the correct type and value.
 func TestTypedAsyncChannelAccept(t *testing.T) {
 	fmt.Println("------ Typing 4: Async typed channel accepts correct type ------")
-	expectedResult := []int{42, 1}
-	expectedType := []string{"int", "int"}
+	expectedResult := []int{1, 2, 3}
+	expectedType := []string{"int", "int", "int"}
 
 	var got []int
 	var gotType []string
@@ -139,8 +139,9 @@ func TestTypedAsyncChannelAccept(t *testing.T) {
 	fmt.Println("[typing] Spawned sender goroutine...")
 	go func() {
 		defer wg.Done()
-		ch <- 42  // send correct type message
 		ch <- 1   // send correct type message
+		ch <- 2   // send correct type message
+		ch <- 3   // send correcty type message
 		close(ch) // signal "no more values"
 	}()
 
@@ -162,8 +163,8 @@ func TestTypedAsyncChannelReject(t *testing.T) {
 // This test demonstrates that an untyped channel (chan any) can accept values of any type and the receiver receives the correct types and values.
 func TestTypedAsyncChannelAcceptAny(t *testing.T) {
 	fmt.Println("------ Typing 6: Async untyped channel accepts any type ------")
-	expectedResult := []any{42, "hello"}
-	expectedType := []string{"int", "string"}
+	expectedResult := []any{1, 2, "hello"}
+	expectedType := []string{"int", "int", "string"}
 
 	var got []any
 	var gotType []string
@@ -190,7 +191,8 @@ func TestTypedAsyncChannelAcceptAny(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		// send any type of message
-		ch <- 42
+		ch <- 1
+		ch <- 2
 		ch <- "hello"
 		close(ch) // signal "no more values"
 	}()

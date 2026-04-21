@@ -40,7 +40,7 @@ test_sync_any_typed_accept() ->
     ChSync = goencoding:sync_new(),
     Parent = self(),
     spawn(fun() ->
-        goencoding:sync_send(ChSync, {any, "term", 123, [list]}),
+        goencoding:sync_send(ChSync, {"term", 123}),
         Parent ! {done, sender}
         end),
     {ok, V1} = goencoding:sync_recv(ChSync),
@@ -49,34 +49,77 @@ test_sync_any_typed_accept() ->
 
 %% --- Test 4: Async typed channel accepts correct type ---
 test_async_typed_accept() ->
-    Ch = goencoding:async_new(3, fun is_atom/1),
-    goencoding:async_send(Ch, hello),
-    goencoding:async_send(Ch, world),
-    {ok, V1} = goencoding:async_recv(Ch),
-    {ok, V2} = goencoding:async_recv(Ch),
-    io:format("[typing] Async accept atoms: ~p, ~p~n", [V1, V2]).
+    Ch = goencoding:async_new(2, fun is_integer/1), % buffered int channel with capacity 2
+    Parent = self(),
+
+    io:format("[async] Spawned receiver goroutine...~n"),
+    spawn(fun() ->
+        {ok, V1} = goencoding:async_recv(Ch),
+        {ok, V2} = goencoding:async_recv(Ch),
+        {ok, V3} = goencoding:async_recv(Ch),
+        io:format("[typing] Async accept integers: ~p, ~p, ~p~n", [V1, V2, V3]),
+        Parent ! {done, receiver}
+    end),
+
+    timer:sleep(100), % Ensure receiver is ready before sender starts
+
+    io:format("[typing] Spawned sender goroutine...~n"),
+    spawn(fun() ->
+        goencoding:async_send(Ch, 1),
+        goencoding:async_send(Ch, 2),
+        goencoding:async_send(Ch, 3),
+        goencoding:async_close(Ch),
+        Parent ! {done, sender}
+    end),
+
+    % Wait for both to complete
+    receive {done, receiver} -> ok end,
+    receive {done, sender} -> ok end.
 
 %% --- Test 5: Async typed channel rejects wrong type ---
 test_async_typed_reject() ->
-    Ch = goencoding:async_new(3, fun is_atom/1),
-    Result = goencoding:recover(fun() -> goencoding:async_send(Ch, 123) end),
+    Ch = goencoding:async_new(3, fun is_integer/1),
+    Result = goencoding:recover(
+        fun() ->
+            goencoding:async_send(Ch, 'hello'),
+            goencoding:async_send(Ch, 1),
+            goencoding:async_send(Ch, 2)
+    end),
     case Result of
         {panic, {type_error, _}} ->
-            io:format("[typing] Async reject on atom channel: ~p~n", [Result]);
+            io:format("[typing] Async reject on integer channel: ~p~n", [Result]);
         Other ->
             io:format("[typing] Async reject UNEXPECTED: ~p~n", [Other])
     end.
 
 %% --- Test 6: Async typed channel accepts any type ---
 test_async_any_typed_accept() ->
-    ChAsync = goencoding:async_new(3),
-    goencoding:async_send(ChAsync, "string"),
-    goencoding:async_send(ChAsync, 42),
-    goencoding:async_send(ChAsync, {tuple, value}),
-    {ok, V2} = goencoding:async_recv(ChAsync),
-    {ok, V3} = goencoding:async_recv(ChAsync),
-    {ok, V4} = goencoding:async_recv(ChAsync),
-    io:format("[typing] Untyped async accepted: ~p, ~p, ~p~n", [V2, V3, V4]).
+    Ch = goencoding:async_new(2), % buffered any type channel with capacity 2
+    Parent = self(),
+
+    io:format("[async] Spawned receiver goroutine...~n"),
+    spawn(fun() ->
+        {ok, V1} = goencoding:async_recv(Ch),
+        {ok, V2} = goencoding:async_recv(Ch),
+        {ok, V3} = goencoding:async_recv(Ch),
+        io:format("[typing] Async accept integers: ~p, ~p, ~p~n", [V1, V2, V3]),
+        Parent ! {done, receiver}
+    end),
+
+    timer:sleep(100), % Ensure receiver is ready before sender starts
+
+    io:format("[typing] Spawned sender goroutine...~n"),
+    spawn(fun() ->
+        goencoding:async_send(Ch, 1),
+        goencoding:async_send(Ch, 2),
+        goencoding:async_send(Ch, "hello"),
+        goencoding:async_close(Ch),
+        Parent ! {done, sender}
+    end),
+
+    % Wait for both to complete
+    receive {done, receiver} -> ok end,
+    receive {done, sender} -> ok end.
 
 %% --- Test x: Sync typed channel rejects when receiver is already waiting ---
 %test_sync_typed_reject_with_waiting_receiver() ->
