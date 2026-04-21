@@ -47,7 +47,7 @@ net TestAsyncAnyType physical "localhost:9999"{
 
 
         println("[NodeA] Requesting channel... " )
-        eval(new async_new(channel_factory, 3, Object, returnTag))@self
+        eval(new async_new(channel_factory, 2, Object, returnTag))@self
         in(returnTag, var Locality ch)@self
         println("[NodeA] Got channel " + ch)
         
@@ -60,12 +60,12 @@ net TestAsyncAnyType physical "localhost:9999"{
     	in(var Locality ch)@self
         println("[Node B] Got channel " + ch)
         
-        
-        var msg1 = 1.24F // Float
-        eval(new async_send(ch, msg1))@self
-        println("[Node B] Sent message " + msg1)
 
-        var msg2 = 1 // Int
+        var msg = 1 // Int
+        eval(new async_send(ch, msg))@self
+        println("[Node B] Sent message " + msg)
+
+        var msg2 = 2 // Int
         eval(new async_send(ch, msg2))@self
         println("[Node B] Sent message " + msg2)
 
@@ -80,15 +80,15 @@ net TestAsyncAnyType physical "localhost:9999"{
         println("[Node C] Got channel " + ch)
         
         eval(new async_recv(ch, self))@self
-        in(self, var Integer msg1)@self
+        in(self, var Object msg1)@self
         println("[Node C] Receiver got: " + msg1)
 
         eval(new async_recv(ch, self))@self
-        in(self, var Integer msg2)@self
+        in(self, var Object msg2)@self
         println("[Node C] Receiver got: " + msg2)
 
         eval(new async_recv(ch, self))@self
-        in(self, var Integer msg3)@self
+        in(self, var Object msg3)@self
         println("[Node C] Receiver got: " + msg3)
 
     }

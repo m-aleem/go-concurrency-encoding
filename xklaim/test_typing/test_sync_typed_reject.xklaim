@@ -61,7 +61,7 @@ net TestSyncTypeReject physical "localhost:9999"{
         println("[Node B] Got channel " + ch)
         
         
-        var msg = 1.24F // Float, wrong type
+        var String msg = "test" // String, wrong type
         eval(new sync_send(ch, msg))@self
         println("[Node B] Sent message " + msg)
 

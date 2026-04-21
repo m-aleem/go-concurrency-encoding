@@ -47,7 +47,7 @@ net TestAsyncTypeAccept physical "localhost:9999"{
 
 
         println("[NodeA] Requesting channel... " )
-        eval(new async_new(channel_factory, 3, Integer, returnTag))@self
+        eval(new async_new(channel_factory, 2, Integer, returnTag))@self
         in(returnTag, var Locality ch)@self
         println("[NodeA] Got channel " + ch)
         
@@ -61,6 +61,8 @@ net TestAsyncTypeAccept physical "localhost:9999"{
         println("[Node B] Got channel " + ch)
         
         eval(new async_send(ch, 1))@self
+        eval(new async_send(ch, 2))@self
+        eval(new async_send(ch, 3))@self
 
     }
 
@@ -71,6 +73,14 @@ net TestAsyncTypeAccept physical "localhost:9999"{
         eval(new async_recv(ch, self))@self
         in(self, var Integer msg)@self
         println("[Node C] Receiver got right type: " + msg)
+
+        eval(new async_recv(ch, self))@self
+        in(self, var Integer msg2)@self
+        println("[Node C] Receiver got right type: " + msg2)
+
+        eval(new async_recv(ch, self))@self
+        in(self, var Integer msg3)@self
+        println("[Node C] Receiver got right type: " + msg3)
 
     }
 }
