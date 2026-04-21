@@ -52,6 +52,7 @@ net TestAsyncReceiverClosed physical "localhost:9999"{
         println("[NodeA] Got channel " + ch)
         
         out(ch)@node_b
+        Thread.sleep(100)
         out(ch)@node_c
         
     }
@@ -79,9 +80,11 @@ node NodeB logical "node_b"{
         
         var Integer msg1 = 10
         eval(new async_send(ch, msg1))@self
+        Thread.sleep(100)
         var Integer msg2 = 20
         eval(new async_send(ch, msg2))@self
         println("[Node C] Sender: sent 10 and 20 to buffer")
+        Thread.sleep(100)
         eval(new async_close(ch, self))@self
         println("[Node C] Sender: closed channel")
     }
