@@ -2,7 +2,7 @@ package goencodingtest
 
 import goencoding.*
 
-net TestAsync physical "tcp-127.0.0.1:9999"{
+net TestAsync physical "localhost:9999"{
 
 	node ChannelFactory logical "channel_factory"{
 	    println("[ChannelFactory] Initialized")
@@ -60,16 +60,11 @@ net TestAsync physical "tcp-127.0.0.1:9999"{
     	in(var Locality ch)@self
         println("[Node B] Got channel " + ch)
         
-//        var msg = 1
-////        var msg = 1.24F // Float, wrong type
-//        eval(new async_send(ch, msg))@self
-//        println("[Node B] Sent message " + msg)
-//
-	eval(new async_send(ch, 1))@self
-	eval(new async_send(ch, 2))@self
-	eval(new async_send(ch, 3))@self
-	eval(new async_send(ch, 4))@self
-	eval(new async_send(ch, 5))@self
+        eval(new async_send(ch, 1))@self
+        eval(new async_send(ch, 2))@self
+        eval(new async_send(ch, 3))@self
+        eval(new async_send(ch, 4))@self
+        eval(new async_send(ch, 5))@self
 
     }
 
@@ -78,13 +73,24 @@ net TestAsync physical "tcp-127.0.0.1:9999"{
         println("[Node C] Got channel " + ch)
         
         eval(new async_recv(ch, self))@self
-        in(self, var Integer msg)@self
-        println("[Node C] Recv message " + msg)
+        in(self, var Integer msg1)@self
+        println("[Node C] Recv message " + msg1)
+
+        eval(new async_recv(ch, self))@self
+        in(self, var Integer msg2)@self
+        println("[Node C] Recv message " + msg2)
+
+        eval(new async_recv(ch, self))@self
+        in(self, var Integer msg3)@self
+        println("[Node C] Recv message " + msg3)
+
+        eval(new async_recv(ch, self))@self
+        in(self, var Integer msg4)@self
+        println("[Node C] Recv message " + msg4)
+
+        eval(new async_recv(ch, self))@self
+        in(self, var Integer msg5)@self
+        println("[Node C] Recv message " + msg5)
 
     }
-    
-
-    // FIXME -- test idea, try swapping calls from @self to the other localities and see if this still works!
-
-
 }
