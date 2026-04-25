@@ -9,7 +9,7 @@ import goencoding.Panic
 // ASYNCHRONOUS COMMUNICATION
 // ---------------------------------------------------------------------------
 
-// Create a async channel. Will return the Locality of the newly created 
+// Create a async channel. Will return the Locality of the newly created
 // channel.
 //
 // Usage:
@@ -40,31 +40,31 @@ proc async_new(Locality chanFactory, Integer capacity, Object msgType, Object re
 proc async_channel(Integer capacity){
     println("[Ch ] ASYNC Channel process started")
 
-    // Queues of senders and receivers 
+    // Queues of senders and receivers
     out("send_q", new LinkedList<SendReq>())@self
     out("recv_q", new LinkedList<RecvReq>())@self
-    
+
     // Message buffer
     out("msg_buffer", new LinkedList<SendReq>())@self
     out("buffer_size", 0)@self // Easier to keep track of size here than call size() due to atomicity
 
     while(true) {
-    	
-		// Note that below we do read_nb for non blocking 
+
+		// Note that below we do read_nb for non blocking
 		// operations to check existence of requests but
 		// in those we use "var Object _tmp" to get localities
 		// and then use the in call inside the if to get the actual
-		// locality with "var Locality <var>"  
+		// locality with "var Locality <var>"
 		//
     	// This is a non-ideal workaround because read_nb causes
     	// a crash if we pass in "var Locality <var>" and the
-    	// the read is empty/false and we also cannot pass the 
+    	// the read is empty/false and we also cannot pass the
     	// Object-saved locality into the read
     	//
-    	// Beacuse of this, technically we could have a request that we 
+    	// Beacuse of this, technically we could have a request that we
     	// "read" and then we "in" a different request, however this
     	// seems to be the only way to not crash on empty non-blocking
-    	// calls (that I know of) 
+    	// calls (that I know of)
 
         // Enqueue send requests
         if(read_nb("async_send", var Object msg, var Object _tmp1)@self){
@@ -83,7 +83,7 @@ proc async_channel(Integer capacity){
             rq.add(new RecvReq(receiver, tag))
             out("recv_q", rq)@self
         }
-        
+
         // Move msg from send queue -> buffer (if space) (Dequeue from send queue)
         read("buffer_size", var Integer count)@self
 
@@ -93,14 +93,14 @@ proc async_channel(Integer capacity){
             if(!sq2.isEmpty()){
                 val SendReq req = sq2.poll()
                 out("send_q", sq2)@self
-                
+
                 in("msg_buffer", var LinkedList<SendReq> mq)@self
                 mq.add(req)
                 out("msg_buffer", mq)@self
 
                 in("buffer_size", count)@self
                 out("buffer_size", count + 1)@self
-                
+
                 val Locality senderLoc = req.sender
     			out("async_send", "ack", req.msg)@senderLoc
             }
@@ -108,7 +108,7 @@ proc async_channel(Integer capacity){
                 out("send_q", sq2)@self
             }
         }
-        
+
         // Move msg from buffer -> recv (if msgs exists) (Dequeue from recv queue)
         read("buffer_size", var Integer count2)@self
 
@@ -116,10 +116,10 @@ proc async_channel(Integer capacity){
             in("recv_q", var LinkedList<RecvReq> rq2)@self
 
             if(!rq2.isEmpty()){
-        		
+
                 val RecvReq req2 = rq2.poll()
                 out("recv_q", rq2)@self
-                
+
                 in("msg_buffer", var LinkedList<SendReq> mq2)@self
                 var SendReq msg2 = mq2.poll()
                 out("msg_buffer", mq2)@self
@@ -151,9 +151,9 @@ proc async_channel(Integer capacity){
 //              <msg> message to send via channel
 proc async_send(Locality ch, Object msg) {
     val Locality requester = getPhysical(self)
-    
+
     var Boolean isClosed = read_nb("chan_status", "closed")@ch
-    
+
     if(isClosed){
         Panic.panic("send on closed channel " + ch)
     }
@@ -164,7 +164,7 @@ proc async_send(Locality ch, Object msg) {
     	if(
     		(sendMsgType == chanMsgType)
     		|| (chanMsgType == Object) // Anything is allowed on an Object-type channel
-    		|| (chanMsgType == Locality && (sendMsgType == klava.PhysicalLocality || sendMsgType == klava.LogicalLocality))		
+    		|| (chanMsgType == Locality && (sendMsgType == klava.PhysicalLocality || sendMsgType == klava.LogicalLocality))
     	){
 	    	out("async_send", msg, requester)@ch
 	    	in("async_send", "ack", msg)@self
@@ -189,13 +189,13 @@ proc async_send(Locality ch, Object msg) {
 //              <msg> will contain the received message
 proc async_recv(Locality ch, Object returnTag) {
     val Locality requester = getPhysical(self)
-    
+
     val Boolean isClosed = read_nb("chan_status", "closed")@ch
-    
+
     if(isClosed) {
         // Try to drain buffered messages
         val Boolean hasBufferedMsg = read_nb("async_msg", var Object bufferedMsg)@ch
-        
+
         if(hasBufferedMsg) {
             in("async_msg", var Object bufferedMsg)@ch
             out(returnTag, bufferedMsg)@self
@@ -217,13 +217,13 @@ proc async_recv(Locality ch, Object returnTag) {
     else {
         out("async_recv", requester, returnTag)@ch
     	in("async_msg", returnTag, var Object msg)@self
-        
+
         read("msgType", val Object chanMsgType)@ch
     	val Object recvMsgType = msg.getClass()
     	if(
     		(recvMsgType == chanMsgType)
     		|| (chanMsgType == Object) // Anything is allowed on an Object-type channel
-    		|| (chanMsgType == Locality && (recvMsgType == klava.PhysicalLocality || recvMsgType == klava.LogicalLocality))		
+    		|| (chanMsgType == Locality && (recvMsgType == klava.PhysicalLocality || recvMsgType == klava.LogicalLocality))
     	){
     		out(returnTag, msg)@self
     	}
@@ -238,7 +238,7 @@ proc async_recv(Locality ch, Object returnTag) {
 
 proc async_close(Locality ch, Object returnTag) {
     val Boolean alreadyClosed = read_nb("chan_status", "closed")@ch
-    
+
     if(alreadyClosed) {
         Panic.panic("close of closed channel")
     }
@@ -254,7 +254,7 @@ proc async_close(Locality ch, Object returnTag) {
 // SYNCHRONOUS COMMUNICATION
 // ---------------------------------------------------------------------------
 
-// Create a sync channel. Will return the Locality of the newly created 
+// Create a sync channel. Will return the Locality of the newly created
 // channel.
 //
 // Usage:
@@ -316,7 +316,7 @@ proc sync_send(Locality ch, Object msg) {
     	if(
     		(sendMsgType == chanMsgType)
     		|| (chanMsgType == Object) // Anything is allowed on an Object-type channel
-    		|| (chanMsgType == Locality && (sendMsgType == klava.PhysicalLocality || sendMsgType == klava.LogicalLocality))		
+    		|| (chanMsgType == Locality && (sendMsgType == klava.PhysicalLocality || sendMsgType == klava.LogicalLocality))
     	){
 		    out("sync_send", msg, sender)@ch
 		    in("sync_ack", msg, sender)@self
@@ -324,7 +324,7 @@ proc sync_send(Locality ch, Object msg) {
     	else{
         	Panic.panic("wrong send type (" + sendMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
     	}
-	    
+
     }
 }
 
@@ -344,7 +344,7 @@ proc sync_send(Locality ch, Object msg) {
 proc sync_recv(Locality ch, Object returnTag) {
     val Locality receiver = getPhysical(self)
     val Boolean isClosed = read_nb("chan_status", "closed")@ch
-    
+
     if(isClosed) {
             read("msgType", val Object chanMsgType)@ch
             if(chanMsgType == Object)
@@ -359,13 +359,13 @@ proc sync_recv(Locality ch, Object returnTag) {
     else {
         out("sync_recv", receiver)@ch
         in("sync_msg", var Object msg)@self
-        
+
         read("msgType", val Object chanMsgType)@ch
     	val Object recvMsgType = msg.getClass()
     	if(
     		(recvMsgType == chanMsgType)
     		|| (chanMsgType == Object) // Anything is allowed on an Object-type channel
-    		|| (chanMsgType == Locality && (recvMsgType == klava.PhysicalLocality || recvMsgType == klava.LogicalLocality))		
+    		|| (chanMsgType == Locality && (recvMsgType == klava.PhysicalLocality || recvMsgType == klava.LogicalLocality))
     	){
         	out(returnTag, msg)@self
     	}
@@ -374,14 +374,14 @@ proc sync_recv(Locality ch, Object returnTag) {
     		// because we check the type before the _send
         	Panic.panic("wrong recv type (" + recvMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
     	}
-    	
+
 
     }
 }
 
 proc sync_close(Locality ch, Object returnTag) {
     val Boolean alreadyClosed = read_nb("chan_status", "closed")@ch
-    
+
     if(alreadyClosed) {
         Panic.panic("close of closed channel")
     }
@@ -397,24 +397,27 @@ proc sync_close(Locality ch, Object returnTag) {
 //	accept(remoteA)
 //	val remoteB = new PhysicalLocality
 //	accept(remoteB)
-	
+
 
 // ---------------------------------------------------------------------------
 // CHANNEL FACTORY
 // To use the GoEncoding, you must add a ChannelFactory node to your
 // network (see below), and assign it a logical Locality
+//
+// FIXME: Ideally this would be uncommented here and then be imported into
+// other projects, however we had issues when trying to add this node into
+// test networks. Therefore we manually add this factory into any networks
+// that use this encoding and keep this as a FIXME for future work.
 // ---------------------------------------------------------------------------
-
-// FIXME: We should really be able to made this import-able
 
 //	node ChannelFactory logical "channel_factory"{
 //	    println("[ChannelFactory] Initialized")
 //	    var Integer numChans = 0
-//	    
+//
 //		// Main loop that listens for new channel requests
 //	    while(true) {
 //	        println("[ChannelFactory] Waiting for channel create requests...")
-//	
+//
 //	        in("make_chan", var Object returnTag, var String chanType, var Integer capacity, var Object msgType, var Locality requester)@self
 //	        numChans++
 //	        println("[ChannelFactory] Request for channel of type chanType " + chanType)
@@ -429,7 +432,7 @@ proc sync_close(Locality ch, Object returnTag) {
 //            else if(chanType == "sync"){
 //                eval(new sync_channel())@newChan
 //            }
-//            
+//
 //            // Put channel capacity and message type in its tuple space, for easy read access
 //        	out("capacity", capacity)@newChan
 //            out("msgType", msgType)@newChan
@@ -441,7 +444,7 @@ proc sync_close(Locality ch, Object returnTag) {
 //            // Send to requester
 //            out("new_chan", returnTag, chanType, newChan)@requester
 //		}
-//	
-//	}   
-     
-   
+//
+//	}
+
+
