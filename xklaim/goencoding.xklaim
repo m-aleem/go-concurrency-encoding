@@ -49,6 +49,82 @@ proc async_channel(Integer capacity){
     out("buffer_size", 0)@self // Easier to keep track of size here than call size() due to atomicity
 
     while(true) {
+    	val Boolean isClosed = read_nb("chan_status", "closed")@self
+    	
+        if(isClosed){
+            // Channel is closed - only drain buffer to receivers, no new sends (drain queued senders with error)
+            
+            // Notify all queued senders that channel is closed
+            in("send_q", var LinkedList<SendReq> sq)@self
+            if(!sq.isEmpty()){
+                for (SendReq s : sq) {
+                    val Locality senderLoc = s.sender
+                    out("async_send", "closed", s.msg)@senderLoc
+                    println("[Channel] Notified queued sender that channel is closed")
+                }
+            }
+            out("send_q", new LinkedList<SendReq>())@self
+            
+            
+            // Enqueue recv requests (still accept new receivers)
+            if(read_nb("async_recv", var Object _tmp2, var Object _tmp3)@self){
+                in("async_recv", val Locality receiver, var Object tag)@self
+
+                in("recv_q", var LinkedList<RecvReq> rq)@self
+                rq.add(new RecvReq(receiver, tag))
+                out("recv_q", rq)@self
+            }
+            
+            // Move msg from buffer -> recv (if msgs exist)
+            read("buffer_size", var Integer count2)@self
+
+            if(count2 > 0){
+                in("recv_q", var LinkedList<RecvReq> rq2)@self
+
+                if(!rq2.isEmpty()){
+                    val RecvReq req2 = rq2.poll()
+                    out("recv_q", rq2)@self
+                    
+                    in("msg_buffer", var LinkedList<SendReq> mq2)@self
+                    var SendReq msg2 = mq2.poll()
+                    out("msg_buffer", mq2)@self
+
+                    in("buffer_size", count2)@self
+                    out("buffer_size", count2 - 1)@self
+
+                    val Locality recvLoc = req2.receiver
+                    val Object finalMsg = msg2.msg
+                    out("async_msg", req2.tag, finalMsg)@recvLoc
+                }
+                else{
+                    out("recv_q", rq2)@self
+                }
+            }
+            else{
+                // Buffer empty, send zero values to waiting receivers
+                in("recv_q", var LinkedList<RecvReq> rq3)@self
+                
+                if(!rq3.isEmpty()){
+                    val RecvReq req3 = rq3.poll()
+                    out("recv_q", rq3)@self
+                    
+                    val Locality recvLoc = req3.receiver
+                    read("msgType", val Object chanMsgType)@self
+                    
+                    if(chanMsgType == Integer)
+                        out("async_msg", req3.tag, 0)@recvLoc
+                    else if(chanMsgType == String)
+                        out("async_msg", req3.tag, "")@recvLoc
+                    else if(chanMsgType == Float)
+                        out("async_msg", req3.tag, 0.0)@recvLoc
+                    else
+                        out("async_msg", req3.tag, null)@recvLoc
+                }
+                else{
+                    out("recv_q", rq3)@self
+                }
+            }
+        }
 
 		// Note that below we do read_nb for non blocking
 		// operations to check existence of requests but
@@ -167,7 +243,11 @@ proc async_send(Locality ch, Object msg) {
     		|| (chanMsgType == Locality && (sendMsgType == klava.PhysicalLocality || sendMsgType == klava.LogicalLocality))
     	){
 	    	out("async_send", msg, requester)@ch
-	    	in("async_send", "ack", msg)@self
+//	    	in("async_send", "ack", msg)@self
+			in("async_send", var String status, msg)@self
+            if(status == "closed"){
+                Panic.panic("send on closed channel " + ch)
+            }
     	}
     	else{
         	Panic.panic("wrong send type (" + sendMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
@@ -190,31 +270,6 @@ proc async_send(Locality ch, Object msg) {
 proc async_recv(Locality ch, Object returnTag) {
     val Locality requester = getPhysical(self)
 
-    val Boolean isClosed = read_nb("chan_status", "closed")@ch
-
-    if(isClosed) {
-        // Try to drain buffered messages
-        val Boolean hasBufferedMsg = read_nb("async_msg", var Object bufferedMsg)@ch
-
-        if(hasBufferedMsg) {
-            in("async_msg", var Object bufferedMsg)@ch
-            out(returnTag, bufferedMsg)@self
-        }
-        else {
-            // Channel closed and empty - return null
-            read("msgType", val Object chanMsgType)@ch
-            if(chanMsgType == Object)
-                out(returnTag, null)@self
-            if(chanMsgType == Integer)
-                out(returnTag, 0)@self
-            if(chanMsgType == Float)
-                out(returnTag, 0.0)@self
-            if(chanMsgType == String)
-                out(returnTag, "")@self
-
-        }
-    }
-    else {
         out("async_recv", requester, returnTag)@ch
     	in("async_msg", returnTag, var Object msg)@self
 
@@ -232,11 +287,13 @@ proc async_recv(Locality ch, Object returnTag) {
     		// because we check the type before the _send
         	Panic.panic("wrong recv type (" + recvMsgType + ") on channel " + ch + " (" + chanMsgType + ")")
     	}
-    }
 }
 
 
 proc async_close(Locality ch, Object returnTag) {
+    // Race condition due to non-atomicity: The gap between the check (read_nb)
+    // and set (out) operations allows two processes to both pass the
+    // check before either writes the closed status.
     val Boolean alreadyClosed = read_nb("chan_status", "closed")@ch
 
     if(alreadyClosed) {
@@ -380,6 +437,9 @@ proc sync_recv(Locality ch, Object returnTag) {
 }
 
 proc sync_close(Locality ch, Object returnTag) {
+    // Race condition due to non-atomicity: The gap between the check (read_nb)
+    // and set (out) operations allows two processes to both pass the
+    // check before either writes the closed status.
     val Boolean alreadyClosed = read_nb("chan_status", "closed")@ch
 
     if(alreadyClosed) {
